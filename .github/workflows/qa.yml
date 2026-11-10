@@ -1,0 +1,34 @@
+name: QA 실행
+
+on:
+  workflow_dispatch:
+    inputs:
+      callback_url:
+        description: 구글 시트 웹앱 주소
+        required: true
+      run_id:
+        description: 실행 ID
+        required: true
+      nonce:
+        description: 1회용 확인 값
+        required: true
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node run.js
+        env:
+          CALLBACK_URL: ${{ inputs.callback_url }}
+          RUN_ID: ${{ inputs.run_id }}
+          NONCE: ${{ inputs.nonce }}
