@@ -171,6 +171,7 @@ function arrangeSheets_(ss) {
 
 // 새 프로젝트·시연용: 모든 기록을 지우고 빈 상태로
 function resetAll() {
+  setupSheets();   // 지금 열린 시트를 가리키게 한 뒤 지운다 (사본에서 원본이 지워지지 않게)
   var ss = ss_();
   [SHEETS.INPUT, SHEETS.IA, SHEETS.TC, SHEETS.DEFECT, SHEETS.RUN, SHEETS.HISTORY].forEach(function (n) {
     var sh = ss.getSheetByName(n);
