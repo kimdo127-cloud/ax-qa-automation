@@ -39,6 +39,7 @@
   <button id="runBtn" onclick="run()">QA 실행 (다음 차수)</button>
   <div class="hint">GitHub Actions의 실제 브라우저가 테스트케이스대로 화면을 눌러 봅니다. 1~3분 걸립니다.<br>개발자가 결함 시트에 '수정완료'를 표기한 건은 다음 차수에서 다시 확인해 통과면 종료, 아니면 재오픈합니다.</div>
   <div class="status" id="msg" style="display:none"></div>
+  <div class="hint" id="models"></div>
 
 <script>
   function show(text, cls) {
@@ -60,12 +61,24 @@
     var b = document.getElementById('genBtn');
     b.disabled = true;
     show('작성 중… (피그마 읽기 → HTML 확인 → Gemini 작성)');
+    var t0 = Date.now();
+    var pt = setInterval(function () {
+      google.script.run.withSuccessHandler(function (p) {
+        if (b.disabled) show('작성 중… ' + Math.round((Date.now() - t0) / 1000) + '초\n' + p);
+      }).getProgress();
+    }, 4000);
     google.script.run
-      .withSuccessHandler(function (r) {
-        b.disabled = false;
-        show('완료: IA ' + r.ia + '행 · 시나리오 ' + r.scenarios + '개 · 테스트케이스 ' + r.testcases + '개\nIA · 테스트 시나리오 · 테스트케이스 시트를 확인하세요.', 'ok');
+      .withSuccessHandler(function (r1) {
+        show('IA ' + r1.ia + '행 · 시나리오 ' + r1.scenarios + '개 완료. 테스트케이스 작성 중…');
+        google.script.run
+          .withSuccessHandler(function (r) {
+            b.disabled = false; clearInterval(pt);
+            show('완료: IA ' + r.ia + '행 · 시나리오 ' + r.scenarios + '개 · 테스트케이스 ' + r.testcases + '개\nIA · 테스트 시나리오 · 테스트케이스 시트를 확인하세요.', 'ok');
+          })
+          .withFailureHandler(function (e) { b.disabled = false; clearInterval(pt); show('오류(테스트케이스): ' + e.message, 'err'); })
+          .generateTestCases();
       })
-      .withFailureHandler(function (e) { b.disabled = false; show('오류: ' + e.message, 'err'); })
+      .withFailureHandler(function (e) { b.disabled = false; clearInterval(pt); show('오류: ' + e.message, 'err'); })
       .generateTestDesign({
         figmaUrl: document.getElementById('figmaUrl').value,
         targetUrl: document.getElementById('targetUrl').value,

@@ -27,7 +27,7 @@ var HEADERS = {
 };
 
 var TC_FIXED_COLS = 8; // 테스트케이스 시트의 고정 열 수 (이후는 차수별 결과 열)
-var DEFAULT_MODEL = 'gemini-2.5-flash';
+var DEFAULT_MODEL = '(자동 선택)';
 var DEFAULT_REPO = 'kimdo127-cloud/ax-qa-automation';
 
 /* ───────────── 메뉴 · 화면 ───────────── */
@@ -38,6 +38,7 @@ function onOpen() {
     .addSeparator()
     .addItem('설정 (키 입력)', 'showSettings')
     .addItem('시트 초기 구성', 'setupSheets')
+    .addItem('QA 기록 초기화 (시연용)', 'resetRecords')
     .addToUi();
 }
 
@@ -75,6 +76,20 @@ function setupSheets() {
   return true;
 }
 
+function resetRecords() {
+  var ss = ss_();
+  [SHEETS.DEFECT, SHEETS.RUN].forEach(function (n) {
+    var sh = ss.getSheetByName(n);
+    if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
+  });
+  var tc = ss.getSheetByName(SHEETS.TC);
+  if (tc.getMaxColumns() > TC_FIXED_COLS) tc.deleteColumns(TC_FIXED_COLS + 1, tc.getMaxColumns() - TC_FIXED_COLS);
+  var ia = ss.getSheetByName(SHEETS.IA);
+  if (ia.getLastRow() > 1) ia.getRange(2, 8, ia.getLastRow() - 1, 1).clearContent().setBackground(null);
+  setupSheets();
+  rebuildSummary_();
+}
+
 /* ───────────── 설정 ───────────── */
 
 function props_() { return PropertiesService.getScriptProperties(); }
@@ -87,7 +102,7 @@ function getSettingsStatus() {
     figma: !!p.FIGMA_TOKEN,
     repo: p.GITHUB_REPO || DEFAULT_REPO,
     webappUrl: p.WEBAPP_URL || '',
-    model: p.GEMINI_MODEL || DEFAULT_MODEL
+    model: p.GEMINI_MODEL || ''
   };
 }
 
@@ -111,33 +126,62 @@ function generateTestDesign(form) {
   if (!targetUrl) throw new Error('테스트 대상 URL을 입력하세요.');
   if (!props_().getProperty('GEMINI_API_KEY')) throw new Error('설정에서 Gemini API 키를 먼저 입력하세요.');
 
+  progress_('피그마 읽는 중');
   var design = figmaUrl ? readFigma_(figmaUrl) : '(피그마 없음: 기획 메모만 기준으로 함)';
-  var pages = crawl_(targetUrl);
-  var prompt = buildPrompt_(design, pages, memo, targetUrl);
-  var out = callGemini_(prompt);
+  progress_('HTML 확인 중');
+  var pages = crawl_(targetUrl, memo);
+  // 2단계(테스트케이스)에서 다시 쓰도록 입력 자료를 임시 저장
+  CacheService.getScriptCache().put('GEN_CTX', JSON.stringify({ design: design, pages: pages, memo: memo, targetUrl: targetUrl, figmaUrl: figmaUrl }), 3600);
 
-  // 기존 테스트케이스가 있으면 백업 후 새로 작성
-  var tcSheet = ss.getSheetByName(SHEETS.TC);
-  if (tcSheet.getLastRow() > 1) {
-    var stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'MMdd_HHmm');
-    tcSheet.copyTo(ss).setName('테스트케이스_백업_' + stamp);
-  }
+  var out = callGemini_(buildPrompt_('ia', design, pages, memo, targetUrl, ''));
+  progress_('IA · 시나리오 시트에 쓰는 중');
   writeRows_(SHEETS.IA, (out.ia || []).map(function (r) {
     return [r.id, r.screen, r.area, r.element, r.type, r.design || '', '', ''];
   }));
   writeRows_(SHEETS.SC, (out.scenarios || []).map(function (r) {
     return [r.id, r.title, (r.iaIds || []).join(', '), r.description || ''];
   }));
+  props_().setProperty('TARGET_URL', targetUrl);
+  return { ia: (out.ia || []).length, scenarios: (out.scenarios || []).length };
+}
+
+function generateTestCases() {
+  var ss = ss_();
+  var raw = CacheService.getScriptCache().get('GEN_CTX');
+  if (!raw) throw new Error('먼저 IA · 시나리오를 만드세요.');
+  var c = JSON.parse(raw);
+  var ia = ss.getSheetByName(SHEETS.IA), sc = ss.getSheetByName(SHEETS.SC);
+  var iaText = ia.getRange(2, 1, Math.max(ia.getLastRow() - 1, 1), 6).getValues().filter(function (r) { return r[0]; })
+    .map(function (r) { return r.join(' | '); }).join('\n');
+  var scText = sc.getRange(2, 1, Math.max(sc.getLastRow() - 1, 1), 4).getValues().filter(function (r) { return r[0]; })
+    .map(function (r) { return r.join(' | '); }).join('\n');
+  var scRows = sc.getRange(2, 1, Math.max(sc.getLastRow() - 1, 1), 4).getValues().filter(function (r) { return r[0]; });
+  var all = [];
+  scRows.forEach(function (r, idx) {
+    progress_('테스트케이스 작성 중 (' + (idx + 1) + '/' + scRows.length + ' 시나리오 ' + r[0] + ')');
+    var o = callGemini_(buildPrompt_('tc', c.design, c.pages, c.memo, c.targetUrl,
+      '=== IA ===\n' + iaText + '\n\n=== 전체 시나리오 ===\n' + scText + '\n\n=== 이번에 작성할 시나리오 ===\n' + r.join(' | ') +
+      '\n이 시나리오 하나에 대한 테스트케이스만 2~4개 작성한다. scenarioId는 ' + r[0] + '.'));
+    (o.testcases || []).forEach(function (t) { t.scenarioId = r[0]; all.push(t); });
+  });
+  all.forEach(function (t, i) { t.id = 'TC-' + ('0' + (i + 1)).slice(-2); });
+  var out = { testcases: all };
+  progress_('테스트케이스 시트에 쓰는 중');
+  var tcSheet = ss.getSheetByName(SHEETS.TC);
+  if (tcSheet.getLastRow() > 1) {
+    var stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'MMdd_HHmm');
+    tcSheet.copyTo(ss).setName('테스트케이스_백업_' + stamp);
+  }
   resetTcSheet_();
   writeRows_(SHEETS.TC, (out.testcases || []).map(function (r) {
     return [r.id, r.scenarioId, r.title, (r.iaIds || []).join(', '), r.precondition || '', r.stepsText || '', r.expected || '', JSON.stringify(r.steps || [])];
   }));
   linkIaToTc_();
-  ss.getSheetByName(SHEETS.INPUT).appendRow([now_(), figmaUrl, targetUrl, memo,
-    'IA ' + (out.ia || []).length + '행 · 시나리오 ' + (out.scenarios || []).length + '개 · 테스트케이스 ' + (out.testcases || []).length + '개']);
-  props_().setProperty('TARGET_URL', targetUrl);
+  var iaN = ia.getLastRow() - 1, scN = sc.getLastRow() - 1, tcN = (out.testcases || []).length;
+  ss.getSheetByName(SHEETS.INPUT).appendRow([now_(), c.figmaUrl, c.targetUrl, c.memo,
+    'IA ' + iaN + '행 · 시나리오 ' + scN + '개 · 테스트케이스 ' + tcN + '개']);
   rebuildSummary_();
-  return { ia: (out.ia || []).length, scenarios: (out.scenarios || []).length, testcases: (out.testcases || []).length };
+  return { ia: iaN, scenarios: scN, testcases: tcN };
 }
 
 function resetTcSheet_() {
@@ -202,17 +246,19 @@ function solidHex_(fills) {
   return '#' + [c.r, c.g, c.b].map(function (v) { var h = Math.round(v * 255).toString(16); return h.length < 2 ? '0' + h : h; }).join('').toUpperCase();
 }
 
-function crawl_(startUrl) {
+function crawl_(startUrl, memo) {
   var base = startUrl.replace(/[^\/]*$/, '');
   var queue = [startUrl], seen = {}, pages = [];
-  while (queue.length && pages.length < 6) {
+  var mm0, re0 = /([\w-]+\.html)/g;
+  while ((mm0 = re0.exec(memo || ''))) queue.push(base + mm0[1]);
+  while (queue.length && pages.length < 8) {
     var url = queue.shift();
     if (seen[url]) continue;
     seen[url] = true;
     var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
     if (res.getResponseCode() >= 400) continue;
     var html = res.getContentText();
-    var re = /href="([^"#?]+\.html)"/g, mm;
+    var re = /["'(]([\w./-]+\.html)(?=["'?#)])/g, mm;
     while ((mm = re.exec(html))) {
       var abs = mm[1].indexOf('http') === 0 ? mm[1] : base + mm[1].replace(/^\.\//, '');
       if (abs.indexOf(base) === 0 && !seen[abs]) queue.push(abs);
@@ -224,48 +270,69 @@ function crawl_(startUrl) {
   return pages;
 }
 
-function buildPrompt_(design, pages, memo, targetUrl) {
-  return [
-    '너는 웹 서비스 QA 담당자다. 디자인(피그마)과 기획 메모를 기준으로 IA, 테스트 시나리오, 테스트케이스를 작성한다.',
-    '',
-    '규칙',
-    '1. 기대 결과는 반드시 피그마 디자인과 기획 메모에서만 가져온다. HTML은 요소를 찾을 선택자와 페이지 경로를 확인하는 용도로만 쓴다. HTML 내용이 피그마와 달라도 기대 결과는 피그마 기준이다.',
-    '2. IA는 화면 > 영역 > 요소(제목, 입력칸, 버튼, 링크, 탭, 카드, 안내 문구) 단위까지 빠짐없이 쓴다. ID는 IA-01부터.',
-    '3. 시나리오는 사용자 흐름 단위(SC-01부터), 테스트케이스는 시나리오별 확인 항목(TC-01부터). 테스트케이스는 12~18개.',
-    '4. 꼭 포함: 각 화면 제목·버튼·탭 문구가 피그마와 같은지(expectTextIn으로 해당 요소를 지정. 같은 글자가 화면 다른 곳에 있어도 구분되게), 주요 버튼 색이 피그마와 같은지(expectColor, 피그마 fill 값), 모든 버튼·링크·탭을 눌렀을 때 맞는 화면으로 이동하는지(click 후 expectUrlContains와 expectText), 기획 메모의 예외 동작(오류 문구 등).',
-    '5. 각 테스트케이스는 goto로 시작한다(url은 페이지 파일명). 로그인이 필요한 화면은 기획 메모의 테스트 계정으로 로그인 단계를 먼저 넣는다. 테스트케이스끼리 상태를 공유하지 않는다.',
-    '6. steps에 쓸 수 있는 action과 필드:',
-    '   goto {url} / fill {selector, value} / click {selector 또는 text} / expectUrlContains {value} / expectText {text} / expectTextIn {selector, text} / expectVisible {selector} / expectColor {selector, property(기본 background-color), value(#RRGGBB)} / wait {value(ms)}',
-    '   selector는 아래 HTML에 실제로 있는 id·class 기반 CSS 선택자만 쓴다. 같은 클래스가 여럿이면 첫 번째 요소가 선택된다.',
-    '7. stepsText는 사람이 읽는 수행 단계(1. 2. 3.), expected는 사람이 읽는 기대 결과. 모두 한국어.',
-    '',
-    'JSON으로만 답한다. 형식:',
-    '{"ia":[{"id","screen","area","element","type","design"}],',
-    ' "scenarios":[{"id","title","iaIds":[],"description"}],',
-    ' "testcases":[{"id","scenarioId","title","iaIds":[],"precondition","stepsText","expected","steps":[{"action","url","selector","text","value","property"}]}]}',
-    '(design 필드에는 피그마 기준 값: 문구, 색, 크기 등을 짧게)',
-    '',
-    '=== 피그마 디자인 ===',
-    design,
-    '',
-    '=== 기획 메모 ===',
-    memo || '(없음)',
-    '',
+function buildPrompt_(part, design, pages, memo, targetUrl, extra) {
+  var common = [
+    '너는 웹 서비스 QA 담당자다. 디자인(피그마)과 기획 메모를 기준으로 작업한다.',
+    '기대 결과는 반드시 피그마 디자인과 기획 메모에서만 가져온다. HTML은 요소를 찾을 선택자와 페이지 경로를 확인하는 용도로만 쓴다. HTML이 피그마와 달라도 기준은 피그마다.',
+    '모두 한국어. JSON으로만 답한다.'
+  ];
+  var rules = part === 'ia' ? [
+    '할 일: IA와 테스트 시나리오 작성.',
+    '- IA는 화면 > 영역 > 요소(제목, 입력칸, 버튼, 링크, 탭, 카드, 안내 문구) 단위까지 빠짐없이. ID는 IA-01부터. design 필드에는 피그마 기준 값(문구, 색, 크기)을 짧게.',
+    '- 시나리오는 사용자 흐름 단위로 5~8개. ID는 SC-01부터. iaIds에 관련 IA ID.',
+    '형식: {"ia":[{"id","screen","area","element","type","design"}],"scenarios":[{"id","title","iaIds":[],"description"}]}'
+  ] : [
+    '할 일: 아래 IA와 시나리오를 바탕으로 테스트케이스 작성.',
+    '- 꼭 포함: 각 화면 제목·버튼·탭 문구가 피그마와 같은지(expectTextIn으로 해당 요소 지정), 주요 버튼 색이 피그마와 같은지(expectColor, 피그마 fill 값), 모든 버튼·링크·탭을 눌렀을 때 맞는 화면으로 이동하는지(click 후 expectUrlContains), 기획 메모의 예외 동작(오류 문구 등).',
+    '- 각 테스트케이스는 goto로 시작(url은 페이지 파일명). 로그인이 필요한 화면은 기획 메모의 테스트 계정으로 로그인 단계를 먼저 넣는다. 테스트케이스끼리 상태를 공유하지 않는다.',
+    '- steps action: goto {url} / fill {selector, value} / click {selector 또는 text} / expectUrlContains {value} / expectText {text} / expectTextIn {selector, text} / expectVisible {selector} / expectColor {selector, property(기본 background-color), value(#RRGGBB)} / wait {value(ms)}',
+    '- selector는 아래 HTML에 실제로 있는 id·class 기반 CSS 선택자만. 같은 클래스가 여럿이면 첫 번째 요소가 선택된다.',
+    '- stepsText는 사람이 읽는 수행 단계(1. 2. 3.), expected는 사람이 읽는 기대 결과.',
+    '형식: {"testcases":[{"id","scenarioId","title","iaIds":[],"precondition","stepsText","expected","steps":[{"action","url","selector","text","value","property"}]}]}'
+  ];
+  return common.concat([''], rules, ['', '=== 피그마 디자인 ===', design, '', '=== 기획 메모 ===', memo || '(없음)', '',
+    extra || '', '',
     '=== 테스트 대상 HTML (시작 주소 ' + targetUrl + ') ===',
-    pages.map(function (p) { return '--- ' + p.path + ' ---\n' + p.html; }).join('\n')
-  ].join('\n');
+    pages.map(function (p) { return '--- ' + p.path + ' ---\n' + p.html; }).join('\n')]).join('\n');
+}
+
+function listGeminiModels() {
+  var key = props_().getProperty('GEMINI_API_KEY');
+  var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true });
+  return (JSON.parse(res.getContentText()).models || []).filter(function (m) {
+    return (m.supportedGenerationMethods || []).indexOf('generateContent') > -1;
+  }).map(function (m) { return m.name.replace('models/', ''); }).join(', ');
+}
+
+function pickGeminiModel_(key) {
+  var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('Gemini 모델 목록 조회 실패: ' + res.getContentText().slice(0, 200));
+  var names = (JSON.parse(res.getContentText()).models || []).filter(function (m) {
+    return (m.supportedGenerationMethods || []).indexOf('generateContent') > -1;
+  }).map(function (m) { return m.name.replace('models/', ''); });
+  var ver = function (n) { var m = n.match(/gemini-(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
+  var prefer = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'];
+  for (var k = 0; k < prefer.length; k++) if (names.indexOf(prefer[k]) > -1) { props_().setProperty('GEMINI_MODEL', prefer[k]); return prefer[k]; }
+  var flash = names.filter(function (n) { return /^gemini-[\d.]+-flash$/.test(n); });
+  if (!flash.length) flash = names.filter(function (n) { return /flash/.test(n) && !/lite|image|tts|audio|live/.test(n); });
+  if (!flash.length) throw new Error('사용 가능한 Gemini flash 모델이 없습니다: ' + names.slice(0, 10).join(', '));
+  flash.sort(function (a, b) { return ver(b) - ver(a); });
+  props_().setProperty('GEMINI_MODEL', flash[0]);
+  return flash[0];
 }
 
 function callGemini_(prompt) {
   var key = props_().getProperty('GEMINI_API_KEY');
-  var model = props_().getProperty('GEMINI_MODEL') || DEFAULT_MODEL;
+  var model = props_().getProperty('GEMINI_MODEL');
+  if (!model || /2\.5-flash$|3\.8-flash$/.test(model)) model = pickGeminiModel_(key);
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
   var body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.2, thinkingConfig: { thinkingLevel: 'low' } }
   };
   var lastErr = '';
   for (var i = 0; i < 3; i++) {
+    progress_('Gemini(' + model + ') 작성 중' + (i ? ' · 재시도 ' + i + ' (직전 오류 ' + lastErr.slice(0, 160) + ')' : ''));
     var res = UrlFetchApp.fetch(url, {
       method: 'post', contentType: 'application/json', payload: JSON.stringify(body),
       headers: { 'x-goog-api-key': key }, muteHttpExceptions: true
@@ -278,6 +345,16 @@ function callGemini_(prompt) {
       return JSON.parse(text);
     }
     lastErr = code + ' ' + res.getContentText().slice(0, 300);
+    if (code === 400 && /thinking/i.test(res.getContentText())) {
+      delete body.generationConfig.thinkingConfig;
+      if (/2\.5/.test(model)) body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      continue;
+    }
+    if (code === 404 && i === 0) {
+      model = pickGeminiModel_(key);
+      url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
+      continue;
+    }
     if (code !== 429 && code < 500) break;
     Utilities.sleep(4000 * (i + 1));
   }
@@ -565,6 +642,9 @@ function rebuildSummary_() {
 }
 
 /* ───────────── 공통 ───────────── */
+
+function progress_(msg) { props_().setProperty('PROGRESS', now_() + ' ' + msg); }
+function getProgress() { return props_().getProperty('PROGRESS') || ''; }
 
 function ss_() {
   var id = props_().getProperty('SPREADSHEET_ID');
