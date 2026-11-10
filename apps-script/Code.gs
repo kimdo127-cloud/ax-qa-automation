@@ -13,41 +13,53 @@ var SHEETS = {
   TC: '테스트케이스',
   DEFECT: '결함',
   RUN: '실행 기록',
+  HISTORY: '히스토리',
   SUMMARY: '요약'
 };
 
 var HEADERS = {
-  '입력': ['입력 일시', '피그마 링크', '테스트 대상 URL', '기획 메모', '생성 결과'],
+  '입력': ['입력 일시', '피그마 링크', '테스트 대상 URL', '추가 전달 사항', '생성 결과'],
   'IA': ['IA ID', '화면', '영역', '요소', '유형', '디자인 기준(피그마)', '연결 테스트케이스', '최근 결과'],
   '테스트 시나리오': ['시나리오 ID', '시나리오', '관련 IA', '설명'],
   '테스트케이스': ['TC ID', '시나리오 ID', '테스트 항목', '관련 IA', '사전 조건', '수행 단계', '기대 결과', '실행 단계(자동)', '내용 확인값(자동)'],
-  '결함': ['결함 ID', '발견 차수', 'TC ID', '관련 IA', '화면', '결함 내용', '재현 절차', '기대 결과', '실제 결과', '스크린샷', '스크린샷 원본', '심각도', '개발자 표기', '재확인 결과', '상태', '처리 이력'],
+  '결함': ['결함 ID', '발견 차수', 'TC ID', '관련 IA', '화면', '결함 내용', '재현 절차', '기대 결과', '실제 결과', '스크린샷', '스크린샷 원본', '심각도', '개발자 표기', '재확인 결과', '상태', '처리 이력', '확인 방식'],
   '실행 기록': ['차수', '실행 ID', '시작', '종료', '테스트 대상 URL', '전체', '통과', '실패', '새 결함', '재확인 통과', '재오픈', '상태'],
+  '히스토리': ['일시', '구분', '대상', '내용', '결과', '처리'],
   '요약': []
 };
 
 var TC_FIXED_COLS = 9;          // 테스트케이스 고정 열 (이후는 차수별 결과 열)
+var DCOLS = 17;                 // 결함 탭 열 수
 var DEFECT_STATUS = ['열림', '재오픈', '확인 필요', '종료', '제외'];
 var OPEN_STATUS = { '열림': 1, '재오픈': 1, '확인 필요': 1 };   // 아직 끝나지 않은 결함
 var RUN_TIMEOUT_MIN = 15;       // 이 시간 동안 결과가 안 오면 실행 실패로 처리
 var GEN_TIME_LIMIT_MS = 270000; // Apps Script 6분 제한 전에 멈추기
 var DEFAULT_REPO = 'kimdo127-cloud/ax-qa-automation';
+var TAB_ORDER = ['요약', '결함', '테스트케이스', '히스토리', 'IA', '테스트 시나리오'];
 
 /* ───────────── 메뉴 · 화면 ───────────── */
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('QA 자동화')
-    .addItem('▶ QA 시작', 'showSidebar')
+    .addItem('QA 실행', 'showRunDialog')
+    .addItem('재확인 · 처리할 결함', 'showSidebar')
     .addSeparator()
     .addItem('설정 (키 입력)', 'showSettings')
     .addItem('처음부터 다시 (모든 기록 지우기)', 'resetAll')
     .addToUi();
 }
 
+// QA 실행 팝업: 무엇을 테스트할지 입력
+function showRunDialog() {
+  setupSheets();
+  var html = HtmlService.createHtmlOutputFromFile('Run').setWidth(480).setHeight(520);
+  SpreadsheetApp.getUi().showModalDialog(html, 'QA 실행');
+}
+
+// 사이드 패널: 진행 상황 + 재확인 대기 + 기획자 확인 필요
 function showSidebar() {
   setupSheets();
-  rebuildSummary_();
-  var html = HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('QA 자동화');
+  var html = HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('재확인 · 처리할 결함');
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
@@ -55,6 +67,14 @@ function openSheet(name) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(name);
   if (sh) ss.setActiveSheet(sh);
+}
+
+function openDefectRow(defectId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var d = ss.getSheetByName(SHEETS.DEFECT);
+  var row = findDefectRow_(defectId);
+  ss.setActiveSheet(d);
+  if (row) d.setActiveRange(d.getRange(row, 1, 1, DCOLS));
 }
 
 function showSettings() {
@@ -65,25 +85,24 @@ function showSettings() {
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   props_().setProperty('SPREADSHEET_ID', ss.getId());
+  var created = false;
   Object.keys(HEADERS).forEach(function (name) {
-    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    var sh = ss.getSheetByName(name);
+    if (!sh) { sh = ss.insertSheet(name); created = true; }
     var h = HEADERS[name];
-    if (h.length && sh.getLastRow() <= 1) writeHeader_(sh, h);
+    if (h.length && sh.getRange(1, 1, 1, h.length).getValues()[0].join('|') !== h.join('|')) writeHeaderOnly_(sh, h);
   });
-  var tc = ss.getSheetByName(SHEETS.TC);
-  tc.hideColumns(8, 2);
-  var d = ss.getSheetByName(SHEETS.DEFECT);
-  d.getRange(2, 13, 999, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['수정중', '수정완료'], true).setAllowInvalid(false).build());
-  d.getRange(2, 15, 999, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(DEFECT_STATUS, true).setAllowInvalid(false).build());
   ss.getSheets().forEach(function (sh) {
     var n = sh.getName();
     if ((n === 'Sheet1' || n === '시트1') && sh.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(sh);
   });
-  arrangeSheets_(ss);
+  // 탭 순서·서식은 처음 구성할 때나 순서가 틀렸을 때만 (매번 하면 탭이 차례로 열려 보임)
+  var names = ss.getSheets().map(function (s) { return s.getName(); });
+  var ok = TAB_ORDER.every(function (n, i) { return names[i] === n; });
+  if (created || !ok) arrangeSheets_(ss);
   return true;
 }
 
-// 머리글 아래를 모두 비운다 (고정 행 아래를 전부 삭제하면 오류가 나므로 빈 행 하나를 먼저 둔다)
 function clearBody_(sh) {
   var last = sh.getLastRow();
   if (last < 2) return;
@@ -91,17 +110,21 @@ function clearBody_(sh) {
   sh.deleteRows(2, last - 1);
 }
 
-function writeHeader_(sh, h) {
-  sh.getRange(1, 1, 1, sh.getMaxColumns()).clearContent();
+// 머리글만 다시 쓴다 (기존 데이터·차수 열 보존)
+function writeHeaderOnly_(sh, h) {
   sh.getRange(1, 1, 1, h.length).setValues([h]).setFontWeight('bold').setBackground('#F2F4F6');
   sh.setFrozenRows(1);
 }
 
-// 사람이 보는 탭만 앞에 두고, 시스템용 탭은 숨긴다
+function writeHeader_(sh, h) {
+  sh.getRange(1, 1, 1, sh.getMaxColumns()).clearContent();
+  writeHeaderOnly_(sh, h);
+}
+
 function arrangeSheets_(ss) {
-  var order = [SHEETS.SUMMARY, SHEETS.DEFECT, SHEETS.TC, SHEETS.IA, SHEETS.SC];
-  var color = { '요약': '#191F28', '결함': '#F04452', '테스트케이스': '#3182F6', 'IA': '#8B95A1', '테스트 시나리오': '#8B95A1' };
-  order.forEach(function (n, i) {
+  var color = { '요약': '#191F28', '결함': '#F04452', '테스트케이스': '#3182F6', '히스토리': '#4E5968', 'IA': '#8B95A1', '테스트 시나리오': '#8B95A1' };
+  var active = ss.getActiveSheet();
+  TAB_ORDER.forEach(function (n, i) {
     var sh = ss.getSheetByName(n);
     if (!sh) return;
     ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1);
@@ -112,33 +135,41 @@ function arrangeSheets_(ss) {
     if (n === SHEETS.INPUT || n === SHEETS.RUN || n.indexOf('백업') > -1) sh.hideSheet();
   });
   var d = ss.getSheetByName(SHEETS.DEFECT);
-  [70, 50, 70, 90, 80, 200, 200, 180, 200, 130, 70, 50, 90, 160, 80, 260].forEach(function (w, i) { d.setColumnWidth(i + 1, w); });
-  d.getRange('A:P').setWrap(true).setVerticalAlignment('top');
+  [70, 50, 70, 90, 80, 200, 200, 180, 200, 130, 70, 50, 90, 160, 80, 260, 70].forEach(function (w, i) { d.setColumnWidth(i + 1, w); });
+  d.getRange('A:Q').setWrap(true).setVerticalAlignment('top');
+  d.getRange(2, 13, 999, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['수정중', '수정완료'], true).setAllowInvalid(false).build());
+  d.getRange(2, 15, 999, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(DEFECT_STATUS, true).setAllowInvalid(false).build());
+  d.getRange(2, 17, 999, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['AI', '직접'], true).setAllowInvalid(false).build());
   var tc = ss.getSheetByName(SHEETS.TC);
   [55, 60, 200, 110, 160, 240, 240].forEach(function (w, i) { tc.setColumnWidth(i + 1, w); });
   tc.getRange('A:G').setWrap(true).setVerticalAlignment('top');
+  tc.hideColumns(8, 2);
+  var h = ss.getSheetByName(SHEETS.HISTORY);
+  [120, 80, 90, 360, 160, 70].forEach(function (w, i) { h.setColumnWidth(i + 1, w); });
   var ia = ss.getSheetByName(SHEETS.IA);
   [55, 80, 70, 140, 60, 260, 120, 140].forEach(function (w, i) { ia.setColumnWidth(i + 1, w); });
-  ss.setActiveSheet(ss.getSheetByName(SHEETS.SUMMARY));
+  ss.setActiveSheet(active && active.isSheetHidden && !active.isSheetHidden() ? active : ss.getSheetByName(SHEETS.SUMMARY));
 }
 
 // 새 프로젝트·시연용: 모든 기록을 지우고 빈 상태로
 function resetAll() {
   var ss = ss_();
-  [SHEETS.INPUT, SHEETS.IA, SHEETS.SC, SHEETS.TC, SHEETS.DEFECT, SHEETS.RUN].forEach(function (n) {
+  [SHEETS.INPUT, SHEETS.IA, SHEETS.SC, SHEETS.TC, SHEETS.DEFECT, SHEETS.RUN, SHEETS.HISTORY].forEach(function (n) {
     var sh = ss.getSheetByName(n);
     if (!sh) return;
     clearBody_(sh);
     writeHeader_(sh, HEADERS[n]);
   });
   var tc = ss.getSheetByName(SHEETS.TC);
-  if (tc.getMaxColumns() > TC_FIXED_COLS) tc.deleteColumns(TC_FIXED_COLS + 1, tc.getMaxColumns() - TC_FIXED_COLS);
+  if (tc && tc.getMaxColumns() > TC_FIXED_COLS) tc.deleteColumns(TC_FIXED_COLS + 1, tc.getMaxColumns() - TC_FIXED_COLS);
   ss.getSheets().forEach(function (sh) { if (sh.getName().indexOf('백업') > -1) ss.deleteSheet(sh); });
   var p = props_();
   Object.keys(p.getProperties()).forEach(function (k) { if (k.indexOf('RUN_') === 0) p.deleteProperty(k); });
-  ['PROGRESS', 'TARGET_URL', 'CTX_FILE_ID'].forEach(function (k) { p.deleteProperty(k); });
+  ['PROGRESS', 'TARGET_URL', 'CTX_FILE_ID', 'JOB'].forEach(function (k) { p.deleteProperty(k); });
   setupSheets();
+  arrangeSheets_(ss);
   rebuildSummary_();
+  log_('초기화', '-', '모든 기록 지움', '', '기획자');
 }
 
 /* ───────────── 설정 ───────────── */
@@ -167,27 +198,156 @@ function saveSettings(form) {
   return getSettingsStatus();
 }
 
-/* ───────────── 실행 창 상태 ───────────── */
+/* ───────────── QA 실행 팝업 ───────────── */
+
+function getRunDialogState() {
+  var rows = tcRows_();
+  return { input: lastInput_(), testcases: rows.filter(function (r) { return r.id; }).length, running: !!findRunning_(), settings: getSettingsStatus() };
+}
+
+// 팝업에서 '실행'을 누르면: 할 일(JOB)을 저장하고 사이드 패널을 열어 거기서 진행한다
+function submitRun(form) {
+  var figmaUrl = (form.figmaUrl || '').trim(), targetUrl = (form.targetUrl || '').trim(), memo = (form.memo || '').trim();
+  if (!targetUrl) throw new Error('테스트할 화면 주소를 입력하세요.');
+  if (!/^https?:\/\//.test(targetUrl)) throw new Error('화면 주소는 http:// 또는 https://로 시작해야 합니다.');
+  var s = getSettingsStatus();
+  if (!s.gemini || !s.github || !s.webappUrl) throw new Error('먼저 메뉴 QA 자동화 → 설정에서 키를 입력하세요.');
+  if (findRunning_()) throw new Error('이미 QA가 실행 중입니다. 오른쪽 패널에서 진행 상황을 확인하세요.');
+  var last = lastInput_();
+  var hasTests = tcRows_().some(function (r) { return r.id; });
+  // 피그마나 추가 전달 사항이 바뀌었거나 테스트가 없으면 테스트를 새로 만든다. 주소만 바뀌면 테스트는 그대로 둔다.
+  var needGen = !hasTests || !last || last.figmaUrl !== figmaUrl || last.memo !== memo;
+  var urlChanged = !needGen && last && last.targetUrl !== targetUrl;
+  if (urlChanged) {
+    props_().setProperty('TARGET_URL', targetUrl);
+    ss_().getSheetByName(SHEETS.INPUT).appendRow([now_(), figmaUrl, targetUrl, memo, '화면 주소만 변경 (테스트 유지)']);
+    log_('입력 변경', '-', '화면 주소 변경: ' + targetUrl, '테스트 유지', '기획자');
+  }
+  props_().setProperty('JOB', JSON.stringify({ figmaUrl: figmaUrl, targetUrl: targetUrl, memo: memo, needGen: needGen, at: Date.now() }));
+  showSidebar();
+  return { needGen: needGen };
+}
+
+// 사이드 패널이 할 일을 가져간다 (한 번만)
+function countEditedTests() {
+  return tcRows_().filter(function (r) { return !r.id || r.hash !== tcHash_(r.data) || !r.stepsOk; }).length;
+}
+
+function takeJob() {
+  var p = props_(), raw = p.getProperty('JOB');
+  if (!raw) return null;
+  p.deleteProperty('JOB');
+  var job = JSON.parse(raw);
+  if (Date.now() - job.at > 10 * 60000) return null;
+  job.edited = tcRows_().filter(function (r) { return !r.id || r.hash !== tcHash_(r.data) || !r.stepsOk; }).length;
+  return job;
+}
+
+/* ───────────── 사이드 패널: 재확인 · 처리할 결함 ───────────── */
 
 function getPanelState() {
-  var ss = ss_();
-  var tc = ss.getSheetByName(SHEETS.TC);
-  var rows = tcRows_();
-  var edited = rows.filter(function (r) { return r.id && (r.hash !== tcHash_(r.data) || !r.stepsOk); }).length;
-  var run = ss.getSheetByName(SHEETS.RUN);
+  var running = findRunning_();
+  var run = ss_().getSheetByName(SHEETS.RUN);
   var runRows = run.getLastRow() > 1 ? run.getRange(2, 1, run.getLastRow() - 1, 12).getValues() : [];
-  var running = runRows.filter(function (r) { return r[11] === '실행 중'; }).map(function (r) { return r[1]; })[0] || '';
-  if (running) { getRunStatus(running); }   // 시간 초과 정리
-  runRows = run.getLastRow() > 1 ? run.getRange(2, 1, run.getLastRow() - 1, 12).getValues() : [];
-  running = runRows.filter(function (r) { return r[11] === '실행 중'; }).map(function (r) { return r[1]; })[0] || '';
+  var done = runRows.filter(function (r) { return r[11] === '완료'; });
+  var last = runRows.length ? runRows[runRows.length - 1] : null;
   return {
-    settings: getSettingsStatus(),
-    testcases: rows.filter(function (r) { return r.id; }).length,
-    edited: edited,
-    nextRound: runRows.filter(function (r) { return r[11] === '완료'; }).length + 1,
     running: running,
-    input: lastInput_()
+    runningRound: running && last ? last[0] : '',
+    nextRound: done.length + 1,
+    testcases: tcRows_().filter(function (r) { return r.id; }).length,
+    review: getReviewList_()
   };
+}
+
+// 재확인 대기(개발자 수정완료) + 기획자 확인 필요
+function getReviewList_() {
+  var d = ss_().getSheetByName(SHEETS.DEFECT);
+  if (d.getLastRow() < 2) return { fixed: [], check: [] };
+  var tcMap = {};
+  tcRows_().forEach(function (r) { if (r.id) tcMap[r.id] = r; });
+  var base = (props_().getProperty('TARGET_URL') || '').replace(/[^\/]*$/, '');
+  var rows = d.getRange(2, 1, d.getLastRow() - 1, DCOLS).getValues();
+  var links = d.getRange(2, 11, d.getLastRow() - 1, 1).getFormulas();
+  var fixed = [], check = [];
+  rows.forEach(function (r, i) {
+    if (!r[0] || !OPEN_STATUS[r[14]]) return;
+    var page = '';
+    var t = tcMap[String(r[2]).trim()];
+    if (t) { try { var st = JSON.parse(t.data[7] || '[]'); var g = st.filter(function (x) { return x.action === 'goto'; })[0]; if (g) page = base + String(g.url || '').replace(/^\.?\//, ''); } catch (e) {} }
+    var m = String(links[i][0]).match(/HYPERLINK\("([^"]+)"/);
+    var item = { id: r[0], tc: r[2], screen: r[4], title: r[5], steps: String(r[6]), expected: String(r[7]), actual: String(r[8]),
+                 status: r[14], method: r[16] || 'AI', page: page || base, shot: m ? m[1] : '' };
+    if (r[14] === '확인 필요') check.push(item);
+    else if (r[12] === '수정완료') fixed.push(item);
+  });
+  return { fixed: fixed, check: check };
+}
+
+function setCheckMethod(defectId, method) {
+  var row = findDefectRow_(defectId);
+  if (!row) throw new Error('결함을 찾을 수 없습니다: ' + defectId);
+  ss_().getSheetByName(SHEETS.DEFECT).getRange(row, 17).setValue(method);
+  return true;
+}
+
+// 사람이 직접 확인한 결과를 기록
+function manualVerdict(defectId, verdict) {
+  var d = ss_().getSheetByName(SHEETS.DEFECT);
+  var row = findDefectRow_(defectId);
+  if (!row) throw new Error('결함을 찾을 수 없습니다: ' + defectId);
+  var r = d.getRange(row, 1, 1, DCOLS).getValues()[0];
+  var map = {
+    '통과': { status: '종료', result: '직접 확인 통과', color: '#F1F8E9', mark: r[12] },
+    '재오픈': { status: '재오픈', result: '직접 확인 재오픈 (아직 안 고쳐짐)', color: '#FFF3E0', mark: '' },
+    '결함 맞음': { status: '열림', result: '기획자 판정: 실제 결함', color: null, mark: r[12] },
+    '제외': { status: '제외', result: '기획자 판정: 테스트 오류로 제외', color: '#F2F4F6', mark: r[12] }
+  };
+  var v = map[verdict];
+  if (!v) throw new Error('알 수 없는 판정');
+  d.getRange(row, 13, 1, 4).setValues([[v.mark, v.result, v.status, appendLog_(r[15], now_() + ' ' + v.result)]]);
+  d.getRange(row, 17).setValue('직접');
+  if (v.color) d.getRange(row, 1, 1, DCOLS).setBackground(v.color); else d.getRange(row, 1, 1, DCOLS).setBackground(null);
+  log_('직접 확인', defectId, r[5], v.result, '기획자');
+  rebuildSummary_();
+  return getReviewList_();
+}
+
+function findDefectRow_(defectId) {
+  var d = ss_().getSheetByName(SHEETS.DEFECT);
+  if (d.getLastRow() < 2) return 0;
+  var ids = d.getRange(2, 1, d.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) if (ids[i][0] === defectId) return i + 2;
+  return 0;
+}
+
+/* ───────────── 히스토리 ───────────── */
+
+function log_(kind, target, content, result, who) {
+  try {
+    ss_().getSheetByName(SHEETS.HISTORY).appendRow([now_(), kind, target, String(content || '').slice(0, 300), result || '', who || '시스템']);
+  } catch (e) {}
+}
+
+// 사람이 결함 탭에서 개발자 표기·상태를 바꾸면 히스토리에 남긴다
+function onEdit(e) {
+  try {
+    var sh = e.range.getSheet();
+    if (sh.getName() !== SHEETS.DEFECT || e.range.getRow() < 2 || e.range.getNumRows() > 50) return;
+    var c1 = e.range.getColumn(), c2 = c1 + e.range.getNumColumns() - 1;
+    var rows = sh.getRange(e.range.getRow(), 1, e.range.getNumRows(), DCOLS).getValues();
+    var logs = [];
+    rows.forEach(function (r) {
+      if (!r[0]) return;
+      if (c1 <= 13 && c2 >= 13) logs.push([now_(), '개발자 표기', r[0], '개발자 표기 → ' + (r[12] || '(비움)'), '', '개발자']);
+      if (c1 <= 15 && c2 >= 15) logs.push([now_(), '상태 변경', r[0], '상태 → ' + r[14], '', '기획자']);
+      if (c1 <= 17 && c2 >= 17) logs.push([now_(), '확인 방식', r[0], '확인 방식 → ' + (r[16] || 'AI'), '', '기획자']);
+    });
+    if (logs.length) {
+      var h = e.source.getSheetByName(SHEETS.HISTORY);
+      h.getRange(h.getLastRow() + 1, 1, logs.length, 6).setValues(logs);
+    }
+  } catch (err) {}
 }
 
 function lastInput_() {
@@ -273,6 +433,7 @@ function generateTestCases() {
       'IA ' + iaN + '행 · 시나리오 ' + scN + '개 · 테스트케이스 ' + rows.length + '개' + (skipped.length ? ' · 미작성 ' + skipped.join(', ') : '')]);
     rebuildSummary_();
   } finally { lock.releaseLock(); }
+  log_('테스트 생성', '-', '피그마·화면·추가 전달 사항 기준', 'IA ' + iaN + ' · 시나리오 ' + scN + ' · 테스트 ' + rows.length + (detached ? ' · 결함 ' + detached + '건 확인 필요로 전환' : ''), 'AI');
   return { ia: iaN, scenarios: scN, testcases: rows.length, skipped: skipped, detached: detached };
 }
 
@@ -280,7 +441,7 @@ function generateTestCases() {
 function detachOpenDefects_() {
   var d = ss_().getSheetByName(SHEETS.DEFECT);
   if (d.getLastRow() < 2) return 0;
-  var rows = d.getRange(2, 1, d.getLastRow() - 1, 16).getValues();
+  var rows = d.getRange(2, 1, d.getLastRow() - 1, DCOLS).getValues();
   var n = 0;
   rows.forEach(function (r, i) {
     if (!r[0] || !OPEN_STATUS[r[14]] || String(r[2]).indexOf('(이전)') > -1) return;
@@ -327,6 +488,7 @@ function applyEditedTests() {
     }
   });
   linkIaToTc_();
+  if (done) log_('테스트 반영', '-', '사람이 고친 테스트 ' + done + '건 실행 단계 갱신', failed.length ? '실패 ' + failed.join(', ') : '', 'AI');
   return { updated: done, failed: failed };
 }
 
@@ -580,7 +742,9 @@ function findRunning_() {
   return '';
 }
 
-function startQaRun() {
+function startQaRun(opts) {
+  opts = opts || {};
+  var only = opts.only && opts.only.length ? opts.only : null;
   var p = props_();
   if (!p.getProperty('GITHUB_TOKEN') || !p.getProperty('WEBAPP_URL')) throw new Error('설정에서 GitHub 토큰과 웹앱 주소를 먼저 입력하세요.');
   var lock = LockService.getScriptLock();
@@ -600,10 +764,12 @@ function startQaRun() {
     var ss = ss_(), run = ss.getSheetByName(SHEETS.RUN);
     var done = run.getLastRow() > 1 ? run.getRange(2, 12, run.getLastRow() - 1, 1).getValues().filter(function (r) { return r[0] === '완료'; }).length : 0;
     var round = done + 1;
+    var kind = only ? '재확인' : '차수';
+    var label = only ? '재확인' : round + '차';
     var runId = 'R' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd-HHmmss');
     var nonce = Utilities.getUuid();
-    p.setProperty('RUN_' + runId, JSON.stringify({ nonce: nonce, round: round, target: target, started: Date.now() }));
-    run.appendRow([round + '차', runId, now_(), '', target, '', '', '', '', '', '', '실행 중']);
+    p.setProperty('RUN_' + runId, JSON.stringify({ nonce: nonce, round: round, target: target, started: Date.now(), kind: kind, only: only }));
+    run.appendRow([label, runId, now_(), '', target, '', '', '', '', '', '', '실행 중']);
     SpreadsheetApp.flush();
   } finally { lock.releaseLock(); }
 
@@ -620,7 +786,8 @@ function startQaRun() {
     if (code === 403 || code === 404) throw new Error('GitHub 토큰에 이 저장소의 Actions 권한이 없거나 저장소 이름이 틀렸습니다.');
     throw new Error('GitHub Actions 실행 요청 실패 (' + code + ')');
   }
-  return { runId: runId, round: round };
+  log_(only ? '재확인 시작' : 'QA 실행 시작', label, only ? '대상 ' + only.join(', ') : '전체 테스트', '', '기획자');
+  return { runId: runId, round: label };
 }
 
 function getRunStatus(runId) {
@@ -660,7 +827,7 @@ function doGet(e) {
   if (q.action !== 'cases') return json_({ ok: true, service: 'QA 자동화' });
   var info = checkRun_(q.run, q.nonce);
   if (!info) return json_({ error: '실행 정보가 맞지 않거나 시간이 초과됐습니다.' });
-  var cases = tcRows_().filter(function (r) { return r.id; }).map(function (r) {
+  var cases = tcRows_().filter(function (r) { return r.id && (!info.only || info.only.indexOf(r.id) > -1); }).map(function (r) {
     var steps = [];
     try { steps = JSON.parse(r.data[7] || '[]'); } catch (err) {}
     return { id: r.id, steps: steps };
@@ -707,19 +874,21 @@ function json_(o) {
 
 function applyResults_(runId, info, results) {
   var ss = ss_();
-  var round = info.round;
   var tc = ss.getSheetByName(SHEETS.TC);
   var d = ss.getSheetByName(SHEETS.DEFECT);
+  var recheck = info.kind === '재확인';
+  var label = recheck ? '재확인 ' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'M/d HH:mm') : info.round + '차';
+  var who = 'AI';
 
-  // 1) 테스트케이스 시트에 이번 차수 열 (같은 차수 열이 있으면 재사용)
-  var header = tc.getRange(1, 1, 1, tc.getLastColumn()).getValues()[0];
-  var col = header.indexOf(round + '차 결과') + 1;
-  if (!col) { col = Math.max(tc.getLastColumn(), TC_FIXED_COLS) + 1; tc.getRange(1, col).setValue(round + '차 결과').setFontWeight('bold').setBackground('#F2F4F6'); }
+  // 1) 테스트케이스 시트에 이번 실행 결과 열 (같은 이름 열이 있으면 재사용)
+  var header = tc.getRange(1, 1, 1, Math.max(tc.getLastColumn(), TC_FIXED_COLS)).getValues()[0];
+  var col = header.indexOf(label + ' 결과') + 1;
+  if (!col) { col = Math.max(tc.getLastColumn(), TC_FIXED_COLS) + 1; tc.getRange(1, col).setValue(label + ' 결과').setFontWeight('bold').setBackground('#F2F4F6'); }
   var tcById = {};
   tcRows_().forEach(function (r) { if (r.id) tcById[r.id] = r; });
 
   // 2) 끝나지 않은 결함 (TC별 하나)
-  var defects = d.getLastRow() > 1 ? d.getRange(2, 1, d.getLastRow() - 1, 16).getValues() : [];
+  var defects = d.getLastRow() > 1 ? d.getRange(2, 1, d.getLastRow() - 1, DCOLS).getValues() : [];
   var openByTc = {}, maxNo = 0;
   defects.forEach(function (r, i) {
     var m = String(r[0]).match(/(\d+)$/); if (m) maxNo = Math.max(maxNo, +m[1]);
@@ -729,6 +898,8 @@ function applyResults_(runId, info, results) {
   var iaScreen = iaScreenMap_();
   var folder = shotFolder_();
   var stat = { total: 0, pass: 0, fail: 0, newDefects: 0, verified: 0, reopened: 0 };
+  var logs = [];
+  var L = function (kind, target, content, result) { logs.push([now_(), kind, target, String(content || '').slice(0, 300), result, who]); };
 
   results.forEach(function (r) {
     var t = tcById[r.id];
@@ -737,21 +908,22 @@ function applyResults_(runId, info, results) {
     var cell = tc.getRange(t.row, col);
     var open = openByTc[r.id];
     var marked = open && open.data[12] === '수정완료';
+    var manual = open && open.data[16] === '직접';   // 사람이 직접 확인하기로 한 결함은 AI가 상태를 바꾸지 않는다
+
+    if (r.status === '실행 불가') { cell.setValue('실행 단계 없음').setBackground('#F2F4F6'); return; }
 
     if (r.status === '통과') {
       stat.pass++;
       cell.setValue(r.actual === '기대 결과와 같음' ? '통과' : '통과 (재실행)').setBackground('#E8F5E9');
-      if (open) {
-        d.getRange(open.row, 14, 1, 3).setValues([[round + '차 재확인 통과', '종료',
-          appendLog_(open.data[15], round + '차: 다시 실행해 통과 확인 → 종료' + (marked ? '' : ' (개발자 표기 없이 통과)'))]]);
-        d.getRange(open.row, 1, 1, 16).setBackground('#F1F8E9');
+      if (open && manual) {
+        d.getRange(open.row, 16).setValue(appendLog_(open.data[15], label + ': AI 실행 결과 통과 (직접 확인 대기)'));
+      } else if (open) {
+        d.getRange(open.row, 14, 1, 3).setValues([[label + ' 재확인 통과', '종료',
+          appendLog_(open.data[15], label + ': 다시 실행해 통과 확인 → 종료' + (marked ? '' : ' (개발자 표기 없이 통과)'))]]);
+        d.getRange(open.row, 1, 1, DCOLS).setBackground('#F1F8E9');
         stat.verified++;
+        L('재확인', open.data[0], open.data[5], '통과 → 종료');
       }
-      return;
-    }
-
-    if (r.status === '실행 불가') {
-      cell.setValue('실행 단계 없음').setBackground('#F2F4F6');
       return;
     }
 
@@ -761,40 +933,49 @@ function applyResults_(runId, info, results) {
 
     if (open) {
       cell.setValue((check ? '확인 필요 → ' : '실패 → ') + open.data[0]).setBackground(check ? '#FFF8E1' : '#FDECEA');
-      if (check) {
-        d.getRange(open.row, 14, 1, 3).setValues([[round + '차 재확인 불가 (테스트 오류 가능) · 기획자 확인', '확인 필요',
-          appendLog_(open.data[15], round + '차: 테스트가 요소를 찾지 못해 재확인 불가')]]);
-        d.getRange(open.row, 1, 1, 16).setBackground('#FFF8E1');
+      if (manual) {
+        d.getRange(open.row, 16).setValue(appendLog_(open.data[15], label + ': AI 실행 결과 실패 (직접 확인 대기)'));
+      } else if (check) {
+        d.getRange(open.row, 14, 1, 3).setValues([[label + ' 재확인 불가 (테스트 오류 가능) · 기획자 확인', '확인 필요',
+          appendLog_(open.data[15], label + ': 테스트가 요소를 찾지 못해 재확인 불가')]]);
+        d.getRange(open.row, 1, 1, DCOLS).setBackground('#FFF8E1');
+        L('재확인', open.data[0], open.data[5], '재확인 불가 → 확인 필요');
       } else if (marked) {
-        d.getRange(open.row, 13, 1, 4).setValues([['', round + '차 재오픈 (수정완료 표기됐지만 재현됨)', '재오픈',
-          appendLog_(open.data[15], round + '차: 개발자 수정완료 표기 → 다시 실행해 재현 → 재오픈')]]);
-        d.getRange(open.row, 1, 1, 16).setBackground('#FFF3E0');
+        d.getRange(open.row, 13, 1, 4).setValues([['', label + ' 재오픈 (수정완료 표기됐지만 재현됨)', '재오픈',
+          appendLog_(open.data[15], label + ': 개발자 수정완료 표기 → 다시 실행해 재현 → 재오픈')]]);
+        d.getRange(open.row, 1, 1, DCOLS).setBackground('#FFF3E0');
         stat.reopened++;
+        L('재확인', open.data[0], open.data[5], '재현됨 → 재오픈');
       } else {
-        d.getRange(open.row, 16).setValue(appendLog_(open.data[15], round + '차: 계속 실패'));
+        d.getRange(open.row, 16).setValue(appendLog_(open.data[15], label + ': 계속 실패'));
       }
-      if (shot) setShot_(d, open.row, shot);
-      d.getRange(open.row, 9).setValue(r.actual);
-    } else {
+      if (shot && !manual) setShot_(d, open.row, shot);
+      if (!manual) d.getRange(open.row, 9).setValue(r.actual);
+    } else if (!recheck) {
       maxNo++;
       var id = 'D-' + ('00' + maxNo).slice(-3);
       var ia = String(t.data[3]);
       var screen = ia.split(/\s*,\s*/).map(function (x) { return iaScreen[x]; }).filter(String)[0] || '';
       var sev = check ? '-' : (/expectColor|expectText/.test(r.failedAction || '') ? '보통' : '높음');
-      d.appendRow([id, round + '차', r.id, ia, screen, (check ? '[테스트 확인 필요] ' : '') + t.data[2], t.data[5], t.data[6], r.actual, '', '', sev, '',
-        check ? '테스트 오류 가능 · 기획자 확인 (진짜 결함이면 상태를 열림, 아니면 제외)' : '', check ? '확인 필요' : '열림',
-        round + '차: 발견 (' + now_() + ')']);
+      d.appendRow([id, label, r.id, ia, screen, (check ? '[테스트 확인 필요] ' : '') + t.data[2], t.data[5], t.data[6], r.actual, '', '', sev, '',
+        check ? '테스트 오류 가능 · 기획자 확인' : '', check ? '확인 필요' : '열림', label + ': 발견 (' + now_() + ')', 'AI']);
       var row = d.getLastRow();
-      if (check) d.getRange(row, 1, 1, 16).setBackground('#FFF8E1');
+      if (check) d.getRange(row, 1, 1, DCOLS).setBackground('#FFF8E1');
       if (shot) setShot_(d, row, shot);
       cell.setValue((check ? '확인 필요 → ' : '실패 → ') + id).setBackground(check ? '#FFF8E1' : '#FDECEA');
       stat.newDefects++;
+      L('결함 등록', id, t.data[2], check ? '확인 필요' : '열림');
+    } else {
+      cell.setValue('실패').setBackground('#FDECEA');
     }
   });
 
   var runRow = findRunRow_(runId);
-  ss.getSheetByName(SHEETS.RUN).getRange(runRow, 4, 1, 9).setValues([[now_(), info.target, stat.total, stat.pass, stat.fail, stat.newDefects, stat.verified, stat.reopened, '완료']]);
-  updateIaResults_(round, col);
+  ss.getSheetByName(SHEETS.RUN).getRange(runRow, 4, 1, 9).setValues([[now_(), info.target, stat.total, stat.pass, stat.fail, stat.newDefects, stat.verified, stat.reopened, recheck ? '완료(재확인)' : '완료']]);
+  logs.unshift([now_(), recheck ? '재확인 실행' : 'QA 실행', label, '테스트 ' + stat.total + '건', '통과 ' + stat.pass + ' · 문제 ' + stat.fail + ' · 새 결함 ' + stat.newDefects + ' · 종료 ' + stat.verified + ' · 재오픈 ' + stat.reopened, 'AI']);
+  var h = ss.getSheetByName(SHEETS.HISTORY);
+  h.getRange(h.getLastRow() + 1, 1, logs.length, 6).setValues(logs);
+  if (!recheck) updateIaResults_(label, col);
   rebuildSummary_();
 }
 
@@ -825,7 +1006,7 @@ function updateIaResults_(round, col) {
   var vals = ids.map(function (r) {
     var x = res[r[0]];
     if (!x) return ['테스트 없음'];
-    return [x.length ? round + '차 문제 (' + x.join(', ') + ')' : round + '차 통과'];
+    return [x.length ? round + ' 문제 (' + x.join(', ') + ')' : round + ' 통과'];
   });
   var range = ia.getRange(2, 8, ids.length, 1);
   range.setValues(vals);
@@ -868,7 +1049,7 @@ function rebuildSummary_() {
   sh.clear(); sh.clearFormats();
   var ia = ss.getSheetByName(SHEETS.IA), d = ss.getSheetByName(SHEETS.DEFECT), run = ss.getSheetByName(SHEETS.RUN);
   var iaRows = ia.getLastRow() > 1 ? ia.getRange(2, 1, ia.getLastRow() - 1, 8).getValues() : [];
-  var dRows = d.getLastRow() > 1 ? d.getRange(2, 1, d.getLastRow() - 1, 16).getValues() : [];
+  var dRows = d.getLastRow() > 1 ? d.getRange(2, 1, d.getLastRow() - 1, DCOLS).getValues() : [];
   var runRows = run.getLastRow() > 1 ? run.getRange(2, 1, run.getLastRow() - 1, 12).getValues().filter(function (r) { return r[11] === '완료'; }) : [];
   var open = 0, reopen = 0, check = 0, closed = 0;
   dRows.forEach(function (r) {
@@ -881,7 +1062,7 @@ function rebuildSummary_() {
   var last = runRows.length ? runRows[runRows.length - 1] : null;
 
   sh.getRange('A1').setValue('QA 현황').setFontSize(16).setFontWeight('bold');
-  sh.getRange('A2').setValue(last ? '최근 ' + last[0] + ' QA · ' + (last[3] instanceof Date ? Utilities.formatDate(last[3], 'Asia/Seoul', 'M월 d일 HH:mm') : last[3]) : '아직 QA를 실행하지 않았습니다. 메뉴 QA 자동화 → ▶ QA 시작').setFontColor('#8B95A1');
+  sh.getRange('A2').setValue(last ? '최근 ' + last[0] + ' QA · ' + (last[3] instanceof Date ? Utilities.formatDate(last[3], 'Asia/Seoul', 'M월 d일 HH:mm') : last[3]) : '아직 QA를 실행하지 않았습니다. 메뉴 QA 자동화 → QA 실행').setFontColor('#8B95A1');
   var kpi = [['미해결 결함', open + reopen + check, '#FFF5F5', '#C2410C'], ['그중 재오픈', reopen, '#FFF3E0', '#C2410C'],
              ['기획자 확인 필요', check, '#FFF8E1', '#8A6D00'], ['종료', closed, '#E8F5E9', '#1B7F3B'],
              ['최근 통과', last ? last[6] + ' / ' + last[5] : '-', '#F2F4F6', '#191F28']];

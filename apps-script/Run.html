@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  body { font-family: -apple-system, "Apple SD Gothic Neo", Arial, sans-serif; font-size: 13px; color: #191F28; margin: 0; padding: 4px 6px; }
+  h3 { font-size: 15px; margin: 4px 0 2px; }
+  .sub { color: #8B95A1; font-size: 12px; margin: 0 0 10px; }
+  label { display: block; color: #4E5968; font-size: 12px; margin: 12px 0 4px; }
+  label b { color: #191F28; }
+  input, textarea { width: 100%; box-sizing: border-box; border: 1px solid #D1D6DB; border-radius: 8px; padding: 9px; font-size: 13px; font-family: inherit; }
+  textarea { height: 120px; resize: vertical; }
+  .hint { color: #8B95A1; font-size: 11.5px; margin-top: 4px; }
+  button { width: 100%; height: 44px; margin-top: 16px; border: 0; border-radius: 10px; background: #3182F6; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  button:disabled { background: #D1D6DB; }
+  .msg { margin-top: 8px; font-size: 12px; color: #C2410C; white-space: pre-line; }
+  .info { background: #F2F4F6; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #4E5968; margin-top: 10px; display: none; }
+</style>
+</head>
+<body>
+  <h3>무엇을 테스트할까요?</h3>
+  <p class="sub">실행을 누르면 창이 닫히고, 오른쪽 패널에서 진행 상황을 볼 수 있습니다.</p>
+
+  <label><b>피그마 링크</b> (화면이 어떻게 생겨야 하는지 기준)</label>
+  <input id="figmaUrl" placeholder="https://www.figma.com/design/...">
+
+  <label><b>테스트할 화면 주소 (HTML)</b></label>
+  <input id="targetUrl" placeholder="https://.../index.html">
+
+  <label><b>추가 전달 사항</b> (테스트 계정, 버튼을 누르면 어떻게 되는지)</label>
+  <textarea id="memo" placeholder="예)&#10;테스트 계정 parent@test.com / 1234&#10;로그인하면 수강 신청 화면으로 이동&#10;비밀번호가 틀리면 '이메일 또는 비밀번호가 맞지 않습니다.' 표시"></textarea>
+  <div class="hint">비워 두면 로그인 이후 화면과 오류 상황은 테스트하지 못합니다.</div>
+
+  <div class="info" id="info"></div>
+  <button id="go" onclick="go()">실행</button>
+  <div class="msg" id="msg"></div>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var last = null, hasTests = 0;
+  google.script.run.withSuccessHandler(function (s) {
+    last = s.input; hasTests = s.testcases;
+    if (last) { $('figmaUrl').value = last.figmaUrl || ''; $('targetUrl').value = last.targetUrl || ''; $('memo').value = last.memo || ''; }
+    if (s.running) { $('go').disabled = true; $('msg').textContent = '이미 QA가 실행 중입니다. 메뉴 → 재확인 · 처리할 결함에서 진행 상황을 확인하세요.'; }
+    else if (!(s.settings.gemini && s.settings.github && s.settings.webappUrl)) { $('go').disabled = true; $('msg').textContent = '먼저 메뉴 QA 자동화 → 설정에서 키를 입력하세요.'; }
+    explain();
+  }).getRunDialogState();
+  ['figmaUrl', 'targetUrl', 'memo'].forEach(function (id) { $(id).addEventListener('input', explain); });
+
+  // 무엇이 실행될지 미리 알려 준다
+  function explain() {
+    var t;
+    if (!hasTests || !last) t = '처음 실행: 테스트를 만든 뒤 바로 실행합니다. (약 3분)';
+    else if (last.figmaUrl !== $('figmaUrl').value.trim() || last.memo !== $('memo').value.trim()) t = '피그마나 추가 전달 사항이 바뀌어 테스트를 새로 만든 뒤 실행합니다. 지금 테스트는 백업되고, 진행 중인 결함은 "확인 필요"로 바뀝니다.';
+    else if (last.targetUrl !== $('targetUrl').value.trim()) t = '화면 주소만 바뀌었습니다. 지금 테스트 ' + hasTests + '개를 새 주소에서 실행합니다.';
+    else t = '지금 테스트 ' + hasTests + '개로 다음 차수를 실행합니다. (약 1~2분)';
+    $('info').textContent = t; $('info').style.display = 'block';
+  }
+
+  function go() {
+    $('go').disabled = true; $('msg').textContent = '';
+    google.script.run.withSuccessHandler(function () { google.script.host.close(); })
+      .withFailureHandler(function (e) { $('go').disabled = false; $('msg').textContent = e.message; })
+      .submitRun({ figmaUrl: $('figmaUrl').value, targetUrl: $('targetUrl').value, memo: $('memo').value });
+  }
+</script>
+</body>
+</html>
