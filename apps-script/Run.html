@@ -14,7 +14,9 @@
   button { width: 100%; height: 44px; margin-top: 16px; border: 0; border-radius: 10px; background: #3182F6; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
   button:disabled { background: #D1D6DB; }
   .msg { margin-top: 8px; font-size: 12px; color: #C2410C; white-space: pre-line; }
-  .ex { width: auto; height: 30px; margin: 6px 6px 0 0; padding: 0 10px; background: #F2F4F6; color: #333D4B; font-size: 12px; font-weight: 500; border-radius: 8px; }
+  .demo { margin-top: 14px; border: 1px dashed #D1D6DB; border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .demo span { font-size: 12px; color: #8B95A1; }
+  .demo button { width: auto; height: 32px; margin: 0; padding: 0 12px; background: #F2F4F6; color: #333D4B; font-size: 12.5px; font-weight: 600; border-radius: 8px; }
   .info { background: #F2F4F6; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #4E5968; margin-top: 10px; display: none; }
 </style>
 </head>
@@ -24,17 +26,15 @@
 
   <label><b>피그마 링크</b> (화면이 어떻게 생겨야 하는지 기준)</label>
   <input id="figmaUrl" placeholder="https://www.figma.com/design/...">
-  <button class="ex" onclick="fill('figmaUrl')">예제 피그마 넣기</button>
 
   <label><b>테스트할 화면 주소 (HTML)</b></label>
   <input id="targetUrl" placeholder="https://.../index.html">
-  <button class="ex" onclick="fill('targetUrl')">예제 화면 주소 넣기</button>
 
   <label><b>추가 전달 사항</b> (테스트 계정, 버튼을 누르면 어떻게 되는지)</label>
   <textarea id="memo" placeholder="예)&#10;테스트 계정 parent@test.com / 1234&#10;로그인하면 수강 신청 화면으로 이동&#10;비밀번호가 틀리면 '이메일 또는 비밀번호가 맞지 않습니다.' 표시"></textarea>
   <div class="hint">비워 두면 로그인 이후 화면과 오류 상황은 테스트하지 못합니다.</div>
-  <button class="ex" onclick="fill('memo')">예제 전달 사항 넣기</button>
 
+  <div class="demo"><span>시연용 예제 (피그마 · 화면 주소 · 전달 사항)</span><button onclick="fillAll()">예제로 채우기</button></div>
   <div class="info" id="info"></div>
   <button id="go" onclick="go()">실행</button>
   <div class="msg" id="msg"></div>
@@ -66,7 +66,7 @@
     targetUrl: 'https://ax-qa-automation-example-site.vercel.app/index.html',
     memo: "테스트 계정: parent@test.com / 1234\n로그인 성공 → 수강 신청 화면(courses.html)으로 이동\n비밀번호가 틀리면 로그인 화면에 '이메일 또는 비밀번호가 맞지 않습니다.' 표시\n수강 신청 화면: '신청하기' 누르면 신청 완료 화면(done.html), '마감' 버튼은 비활성\n수강 신청 / 신청 내역 탭을 누르면 각 화면(courses.html / history.html)으로 이동\n신청 완료 화면의 '신청 내역 보기' 버튼 → 신청 내역 화면(history.html)\n신청 내역 화면에 방금 신청한 수업이 표시됨"
   };
-  function fill(id) { $(id).value = EX[id]; explain(); }
+  function fillAll() { ['figmaUrl', 'targetUrl', 'memo'].forEach(function (id) { $(id).value = EX[id]; }); explain(); }
 
   function go() {
     $('go').disabled = true; $('msg').textContent = '';
