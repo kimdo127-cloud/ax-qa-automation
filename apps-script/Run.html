@@ -45,7 +45,7 @@
   google.script.run.withSuccessHandler(function (s) {
     last = s.input; hasTests = s.testcases;
     if (last) { $('figmaUrl').value = last.figmaUrl || ''; $('targetUrl').value = last.targetUrl || ''; $('memo').value = last.memo || ''; }
-    if (s.running) { $('go').disabled = true; $('msg').textContent = '이미 QA가 실행 중입니다. 메뉴 → 재확인 · 처리할 결함에서 진행 상황을 확인하세요.'; }
+    if (s.running) { $('go').disabled = true; $('msg').textContent = '이미 QA가 실행 중입니다. 메뉴 → 재확인 · 처리할 이슈에서 진행 상황을 확인하세요.'; }
     else if (!(s.settings.gemini && s.settings.github && s.settings.webappUrl)) { $('go').disabled = true; $('msg').textContent = '먼저 메뉴 QA 자동화 → 설정에서 키를 입력하세요.'; }
     explain();
   }).getRunDialogState();
@@ -55,7 +55,7 @@
   function explain() {
     var t;
     if (!hasTests || !last) t = '처음 실행: 테스트를 만든 뒤 바로 실행합니다. (약 3분)';
-    else if (last.figmaUrl !== $('figmaUrl').value.trim() || last.memo !== $('memo').value.trim()) t = '피그마나 추가 전달 사항이 바뀌어 테스트를 새로 만든 뒤 실행합니다. 지금 테스트는 백업되고, 진행 중인 결함은 "확인 필요"로 바뀝니다.';
+    else if (last.figmaUrl !== $('figmaUrl').value.trim() || last.memo !== $('memo').value.trim()) t = '피그마나 추가 전달 사항이 바뀌어 테스트를 새로 만든 뒤 실행합니다. 지금 테스트는 백업되고, 진행 중인 이슈은 "확인 필요"로 바뀝니다.';
     else if (last.targetUrl !== $('targetUrl').value.trim()) t = '화면 주소만 바뀌었습니다. 지금 테스트 ' + hasTests + '개를 새 주소에서 실행합니다.';
     else t = '지금 테스트 ' + hasTests + '개로 다음 차수를 실행합니다. (약 1~2분)';
     $('info').textContent = t; $('info').style.display = 'block';

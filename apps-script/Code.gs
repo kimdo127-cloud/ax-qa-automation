@@ -1,7 +1,7 @@
 /**
  * QA 자동화 (구글 시트 + Apps Script)
  * 흐름: 입력(피그마·테스트 URL·기획 메모) → Gemini가 IA·시나리오·테스트케이스 작성
- *      → GitHub Actions(Playwright)가 실제 브라우저로 실행 → 결과·결함·스크린샷을 시트에 기록
+ *      → GitHub Actions(Playwright)가 실제 브라우저로 실행 → 결과·이슈·스크린샷을 시트에 기록
  *      → 개발자가 '수정완료' 표기 → 다음 차수 실행 때 다시 확인해 통과면 종료, 아니면 재오픈
  * 비밀 값(Gemini 키, GitHub 토큰, 피그마 토큰)은 스크립트 속성에만 저장한다.
  */
@@ -9,9 +9,8 @@
 var SHEETS = {
   INPUT: '입력',
   IA: 'IA',
-  SC: '테스트 시나리오',
-  TC: '테스트케이스',
-  DEFECT: '결함',
+  TC: '테스트 시나리오',
+  DEFECT: 'QA 이슈',
   RUN: '실행 기록',
   HISTORY: '히스토리',
   SUMMARY: '요약'
@@ -20,31 +19,30 @@ var SHEETS = {
 var HEADERS = {
   '입력': ['입력 일시', '피그마 링크', '테스트 대상 URL', '추가 전달 사항', '생성 결과'],
   'IA': ['IA ID', '화면', '영역', '요소', '유형', '디자인 기준(피그마)', '연결 테스트케이스', '최근 결과'],
-  '테스트 시나리오': ['시나리오 ID', '시나리오', '관련 IA', '설명'],
-  '테스트케이스': ['TC ID', '시나리오 ID', '테스트 항목', '관련 IA', '사전 조건', '수행 단계', '기대 결과', '실행 단계(자동)', '내용 확인값(자동)'],
-  '결함': ['결함 ID', '발견 차수', 'TC ID', '관련 IA', '화면', '결함 내용', '재현 절차', '기대 결과', '실제 결과', '스크린샷', '스크린샷 원본', '심각도', '개발자 표기', '재확인 결과', '상태', '처리 이력', '확인 방식'],
-  '실행 기록': ['차수', '실행 ID', '시작', '종료', '테스트 대상 URL', '전체', '통과', '실패', '새 결함', '재확인 통과', '재오픈', '상태'],
+  '테스트 시나리오': ['TC ID', '시나리오', '테스트 항목', '관련 IA', '사전 조건', '수행 단계', '기대 결과', '실행 단계(자동)', '내용 확인값(자동)'],
+  'QA 이슈': ['이슈 ID', '발견 차수', 'TC ID', '관련 IA', '화면', '이슈 내용', '재현 절차', '기대 결과', '실제 결과', '스크린샷', '스크린샷 원본', '심각도', '개발자 표기', '재확인 결과', '상태', '처리 이력', '확인 방식'],
+  '실행 기록': ['차수', '실행 ID', '시작', '종료', '테스트 대상 URL', '전체', '통과', '실패', '새 이슈', '재확인 통과', '재오픈', '상태'],
   '히스토리': ['일시', '구분', '대상', '내용', '결과', '처리'],
   '요약': []
 };
 
 var TC_FIXED_COLS = 9;          // 테스트케이스 고정 열 (이후는 차수별 결과 열)
-var DCOLS = 17;                 // 결함 탭 열 수
+var DCOLS = 17;                 // 이슈 탭 열 수
 var DEFECT_STATUS = ['열림', '재오픈', '확인 필요', '종료', '제외'];
-var OPEN_STATUS = { '열림': 1, '재오픈': 1, '확인 필요': 1 };   // 아직 끝나지 않은 결함
+var OPEN_STATUS = { '열림': 1, '재오픈': 1, '확인 필요': 1 };   // 아직 끝나지 않은 이슈
 var RUN_TIMEOUT_MIN = 15;       // 이 시간 동안 결과가 안 오면 실행 실패로 처리
 var GEN_TIME_LIMIT_MS = 270000; // Apps Script 6분 제한 전에 멈추기
 var DEFAULT_REPO = 'kimdo127-cloud/ax-qa-automation';
 // 시연용 예제 피그마(4회차_QA자동화_디자인)는 미리 읽어 둔 내용을 쓴다 (피그마 읽기 한도 회피)
 var EXAMPLE_FIGMA = { key: 'tDCEsd7ZqCDYvOAV0fyC2M', text: "[화면] 로그인\n  TEXT \"한빛수학\" size 15 weight 700 color #3182F6\n  TEXT \"학부모 로그인\" size 24 weight 700 color #191F28\n  TEXT \"이메일\" size 13 weight 400 color #4E5968\n  FRAME \"이메일 입력칸\" fill #FFFFFF\n    TEXT \"example@email.com\" size 16 weight 400 color #8B95A1\n  TEXT \"비밀번호\" size 13 weight 400 color #4E5968\n  FRAME \"비밀번호 입력칸\" fill #FFFFFF\n    TEXT \"비밀번호 입력\" size 16 weight 400 color #8B95A1\n  TEXT \"이메일 또는 비밀번호가 맞지 않습니다.\" size 13 weight 400 color #F04452\n  FRAME \"로그인 버튼\" fill #3182F6\n    TEXT \"로그인\" size 16 weight 700 color #FFFFFF\n  TEXT \"비밀번호를 잊으셨나요?\" size 13 weight 400 color #8B95A1\n[화면] 수강 신청\n  TEXT \"수강 신청\" size 20 weight 700 color #191F28\n  FRAME \"탭\"\n    FRAME \"수강 신청 탭\"\n      TEXT \"수강 신청\" size 15 weight 700 color #191F28\n    FRAME \"신청 내역 탭\"\n      TEXT \"신청 내역\" size 15 weight 400 color #8B95A1\n  FRAME \"중2 내신 대비반 카드\" fill #FFFFFF\n    FRAME \"수업 정보\"\n      TEXT \"중2 내신 대비반\" size 16 weight 700 color #191F28\n      TEXT \"화·목 19:00 · 월 32만원\" size 13 weight 400 color #4E5968\n    FRAME \"신청하기 버튼\" fill #3182F6\n      TEXT \"신청하기\" size 14 weight 700 color #FFFFFF\n  FRAME \"중3 심화반 카드\" fill #FFFFFF\n    FRAME \"수업 정보\"\n      TEXT \"중3 심화반\" size 16 weight 700 color #191F28\n      TEXT \"월·수 18:00 · 월 35만원\" size 13 weight 400 color #4E5968\n    FRAME \"신청하기 버튼\" fill #3182F6\n      TEXT \"신청하기\" size 14 weight 700 color #FFFFFF\n  FRAME \"고1 선행반 카드\" fill #FFFFFF\n    FRAME \"수업 정보\"\n      TEXT \"고1 선행반\" size 16 weight 700 color #191F28\n      TEXT \"토 10:00 · 월 30만원\" size 13 weight 400 color #4E5968\n    FRAME \"마감 버튼\" fill #E5E8EB\n      TEXT \"마감\" size 14 weight 700 color #8B95A1\n[화면] 신청 완료\n  FRAME \"완료 아이콘\" fill #3182F6\n    TEXT \"✓\" size 32 weight 700 color #FFFFFF\n  TEXT \"신청이 완료되었습니다\" size 20 weight 700 color #191F28\n  TEXT \"중2 내신 대비반 수강 신청이 접수되었습니다.\" size 15 weight 400 color #4E5968\n  FRAME \"신청 내역 보기 버튼\" fill #3182F6\n    TEXT \"신청 내역 보기\" size 16 weight 700 color #FFFFFF\n[화면] 신청 내역\n  TEXT \"신청 내역\" size 20 weight 700 color #191F28\n  FRAME \"탭\"\n    FRAME \"수강 신청 탭\"\n      TEXT \"수강 신청\" size 15 weight 400 color #8B95A1\n    FRAME \"신청 내역 탭\"\n      TEXT \"신청 내역\" size 15 weight 700 color #191F28\n  FRAME \"중2 내신 대비반 카드\" fill #FFFFFF\n    FRAME \"수업 정보\"\n      TEXT \"중2 내신 대비반\" size 16 weight 700 color #191F28\n      TEXT \"신청 접수\" size 13 weight 400 color #4E5968" };
-var TAB_ORDER = ['요약', '결함', '테스트케이스', '히스토리', 'IA', '테스트 시나리오'];
+var TAB_ORDER = ['요약', 'IA', '테스트 시나리오', 'QA 이슈', '히스토리'];
 
 /* ───────────── 메뉴 · 화면 ───────────── */
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('QA 자동화')
     .addItem('QA 실행', 'showRunDialog')
-    .addItem('재확인 · 처리할 결함', 'showSidebar')
+    .addItem('재확인 · 처리할 이슈', 'showSidebar')
     .addSeparator()
     .addItem('설정 (키 입력)', 'showSettings')
     .addItem('처음부터 다시 (모든 기록 지우기)', 'resetAll')
@@ -61,7 +59,7 @@ function showRunDialog() {
 // 사이드 패널: 진행 상황 + 재확인 대기 + 기획자 확인 필요
 function showSidebar() {
   setupSheets();
-  var html = HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('재확인 · 처리할 결함');
+  var html = HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('재확인 · 처리할 이슈');
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
@@ -87,6 +85,7 @@ function showSettings() {
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   props_().setProperty('SPREADSHEET_ID', ss.getId());
+  migrateTabs_(ss);
   var created = false;
   Object.keys(HEADERS).forEach(function (name) {
     var sh = ss.getSheetByName(name);
@@ -103,6 +102,19 @@ function setupSheets() {
   var ok = TAB_ORDER.every(function (n, i) { return names[i] === n; });
   if (created || !ok) arrangeSheets_(ss);
   return true;
+}
+
+// 예전 구조(테스트케이스·테스트 시나리오·결함 탭)를 새 구조로 바꾼다
+function migrateTabs_(ss) {
+  var oldTc = ss.getSheetByName('테스트케이스');
+  if (oldTc) {
+    var oldSc = ss.getSheetByName('테스트 시나리오');
+    if (oldSc) ss.deleteSheet(oldSc);
+    oldTc.setName('테스트 시나리오');
+    oldTc.getRange(1, 2).setValue('시나리오');
+  }
+  var oldD = ss.getSheetByName('결' + '함');
+  if (oldD && !ss.getSheetByName('QA 이슈')) { oldD.setName('QA 이슈'); oldD.getRange(1, 1).setValue('이슈 ID'); }
 }
 
 function clearBody_(sh) {
@@ -124,7 +136,7 @@ function writeHeader_(sh, h) {
 }
 
 function arrangeSheets_(ss) {
-  var color = { '요약': '#191F28', '결함': '#F04452', '테스트케이스': '#3182F6', '히스토리': '#4E5968', 'IA': '#8B95A1', '테스트 시나리오': '#8B95A1' };
+  var color = { '요약': '#191F28', 'IA': '#8B95A1', '테스트 시나리오': '#3182F6', 'QA 이슈': '#F04452', '히스토리': '#4E5968' };
   var active = ss.getActiveSheet();
   TAB_ORDER.forEach(function (n, i) {
     var sh = ss.getSheetByName(n);
@@ -156,7 +168,7 @@ function arrangeSheets_(ss) {
 // 새 프로젝트·시연용: 모든 기록을 지우고 빈 상태로
 function resetAll() {
   var ss = ss_();
-  [SHEETS.INPUT, SHEETS.IA, SHEETS.SC, SHEETS.TC, SHEETS.DEFECT, SHEETS.RUN, SHEETS.HISTORY].forEach(function (n) {
+  [SHEETS.INPUT, SHEETS.IA, SHEETS.TC, SHEETS.DEFECT, SHEETS.RUN, SHEETS.HISTORY].forEach(function (n) {
     var sh = ss.getSheetByName(n);
     if (!sh) return;
     clearBody_(sh);
@@ -245,7 +257,7 @@ function takeJob() {
   return job;
 }
 
-/* ───────────── 사이드 패널: 재확인 · 처리할 결함 ───────────── */
+/* ───────────── 사이드 패널: 재확인 · 처리할 이슈 ───────────── */
 
 function getPanelState() {
   var running = findRunning_();
@@ -288,7 +300,7 @@ function getReviewList_() {
 
 function setCheckMethod(defectId, method) {
   var row = findDefectRow_(defectId);
-  if (!row) throw new Error('결함을 찾을 수 없습니다: ' + defectId);
+  if (!row) throw new Error('이슈을 찾을 수 없습니다: ' + defectId);
   ss_().getSheetByName(SHEETS.DEFECT).getRange(row, 17).setValue(method);
   return true;
 }
@@ -297,12 +309,12 @@ function setCheckMethod(defectId, method) {
 function manualVerdict(defectId, verdict) {
   var d = ss_().getSheetByName(SHEETS.DEFECT);
   var row = findDefectRow_(defectId);
-  if (!row) throw new Error('결함을 찾을 수 없습니다: ' + defectId);
+  if (!row) throw new Error('이슈을 찾을 수 없습니다: ' + defectId);
   var r = d.getRange(row, 1, 1, DCOLS).getValues()[0];
   var map = {
     '통과': { status: '종료', result: '직접 확인 통과', color: '#F1F8E9', mark: r[12] },
     '재오픈': { status: '재오픈', result: '직접 확인 재오픈 (아직 안 고쳐짐)', color: '#FFF3E0', mark: '' },
-    '결함 맞음': { status: '열림', result: '기획자 판정: 실제 결함', color: null, mark: r[12] },
+    '이슈 맞음': { status: '열림', result: '기획자 판정: 실제 이슈', color: null, mark: r[12] },
     '제외': { status: '제외', result: '기획자 판정: 테스트 오류로 제외', color: '#F2F4F6', mark: r[12] }
   };
   var v = map[verdict];
@@ -331,7 +343,7 @@ function log_(kind, target, content, result, who) {
   } catch (e) {}
 }
 
-// 사람이 결함 탭에서 개발자 표기·상태를 바꾸면 히스토리에 남긴다
+// 사람이 이슈 탭에서 개발자 표기·상태를 바꾸면 히스토리에 남긴다
 function onEdit(e) {
   try {
     var sh = e.range.getSheet();
@@ -382,9 +394,9 @@ function generateTestDesign(form) {
   writeRows_(SHEETS.IA, (out.ia || []).map(function (r) {
     return [r.id, r.screen, r.area, r.element, r.type, r.design || '', '', ''];
   }));
-  writeRows_(SHEETS.SC, (out.scenarios || []).map(function (r) {
-    return [r.id, r.title, (r.iaIds || []).join(', '), r.description || ''];
-  }));
+  var ctx = loadCtx_();
+  ctx.scenarios = (out.scenarios || []).map(function (r) { return [r.id, r.title, (r.iaIds || []).join(', '), r.description || '']; });
+  saveCtx_(ctx);
   return { ia: out.ia.length, scenarios: out.scenarios.length };
 }
 
@@ -393,9 +405,10 @@ function generateTestCases() {
   var ss = ss_();
   var c = loadCtx_();
   if (!c) throw new Error('먼저 화면 정보를 입력하고 테스트 만들기를 누르세요.');
-  var ia = ss.getSheetByName(SHEETS.IA), sc = ss.getSheetByName(SHEETS.SC);
-  var iaText = sheetText_(ia, 6), scText = sheetText_(sc, 4);
-  var scRows = sc.getRange(2, 1, Math.max(sc.getLastRow() - 1, 1), 4).getValues().filter(function (r) { return r[0]; });
+  var ia = ss.getSheetByName(SHEETS.IA);
+  var scRows = (c.scenarios || []).filter(function (r) { return r[0]; });
+  if (!scRows.length) throw new Error('시나리오가 없습니다. 다시 실행해 주세요.');
+  var iaText = sheetText_(ia, 6), scText = scRows.map(function (r) { return r.join(' | '); }).join('\n');
   var all = [], skipped = [];
   scRows.forEach(function (r, idx) {
     if (Date.now() - t0 > GEN_TIME_LIMIT_MS) { skipped.push(r[0]); return; }
@@ -404,7 +417,7 @@ function generateTestCases() {
       var o = callGemini_(buildPrompt_('tc', c.design, c.pages, c.memo, c.targetUrl,
         '=== IA ===\n' + iaText + '\n\n=== 전체 시나리오 ===\n' + scText + '\n\n=== 이번에 작성할 시나리오 ===\n' + r.join(' | ') +
         '\n이 시나리오 하나에 대한 테스트케이스만 2~4개 작성한다. scenarioId는 ' + r[0] + '.'));
-      (o.testcases || []).forEach(function (t) { if (t.steps && t.steps.length) { t.scenarioId = r[0]; all.push(t); } });
+      (o.testcases || []).forEach(function (t) { if (t.steps && t.steps.length) { t.scenarioId = r[0] + ' ' + r[1]; all.push(t); } });
     } catch (e) {
       skipped.push(r[0]);
     }
@@ -422,24 +435,29 @@ function generateTestCases() {
     }
     var detached = detachOpenDefects_();
     resetTcSheet_();
+    var txt = function (v) { return Array.isArray(v) ? v.join('\n') : String(v == null ? '' : v); };
     var rows = all.map(function (r) {
-      var row = [r.id, r.scenarioId, r.title, (r.iaIds || []).join(', '), r.precondition || '', r.stepsText || '', r.expected || '', JSON.stringify(r.steps), ''];
-      row[8] = tcHash_(row);
-      return row;
+      return [r.id, r.scenarioId, txt(r.title), txt((r.iaIds || []).join ? r.iaIds.join(', ') : r.iaIds), txt(r.precondition), txt(r.stepsText), txt(r.expected), JSON.stringify(r.steps), ''];
     });
-    tcSheet.getRange(2, 1, rows.length, TC_FIXED_COLS).setValues(rows);
+    var rng = tcSheet.getRange(2, 1, rows.length, TC_FIXED_COLS);
+    rng.setNumberFormat('@');   // 글자 그대로 저장 (숫자·날짜로 바뀌지 않게)
+    rng.setValues(rows);
+    SpreadsheetApp.flush();
+    // 저장된 값을 다시 읽어 확인값을 만든다 (저장 전후 차이로 '수정됨'이 뜨지 않게)
+    var saved = rng.getValues();
+    tcSheet.getRange(2, 9, saved.length, 1).setValues(saved.map(function (r) { return [tcHash_(r)]; }));
     linkIaToTc_();
     props_().setProperty('TARGET_URL', c.targetUrl);
-    var iaN = ia.getLastRow() - 1, scN = sc.getLastRow() - 1;
+    var iaN = ia.getLastRow() - 1, scN = scRows.length;
     ss.getSheetByName(SHEETS.INPUT).appendRow([now_(), c.figmaUrl, c.targetUrl, c.memo,
       'IA ' + iaN + '행 · 시나리오 ' + scN + '개 · 테스트케이스 ' + rows.length + '개' + (skipped.length ? ' · 미작성 ' + skipped.join(', ') : '')]);
     rebuildSummary_();
   } finally { lock.releaseLock(); }
-  log_('테스트 생성', '-', '피그마·화면·추가 전달 사항 기준', 'IA ' + iaN + ' · 시나리오 ' + scN + ' · 테스트 ' + rows.length + (detached ? ' · 결함 ' + detached + '건 확인 필요로 전환' : ''), 'AI');
+  log_('테스트 생성', '-', '피그마·화면·추가 전달 사항 기준', 'IA ' + iaN + ' · 시나리오 ' + scN + ' · 테스트 ' + rows.length + (detached ? ' · 이슈 ' + detached + '건 확인 필요로 전환' : ''), 'AI');
   return { ia: iaN, scenarios: scN, testcases: rows.length, skipped: skipped, detached: detached };
 }
 
-// 테스트를 새로 만들면 TC 번호가 바뀌므로, 진행 중인 결함은 연결을 끊고 기획자 확인으로 돌린다
+// 테스트를 새로 만들면 TC 번호가 바뀌므로, 진행 중인 이슈은 연결을 끊고 기획자 확인으로 돌린다
 function detachOpenDefects_() {
   var d = ss_().getSheetByName(SHEETS.DEFECT);
   if (d.getLastRow() < 2) return 0;
@@ -456,7 +474,7 @@ function detachOpenDefects_() {
   return n;
 }
 
-// 테스트케이스 탭에서 사람이 고친 행만 실행 단계를 다시 만든다 (TC 번호·차수 기록·결함 연결 유지)
+// 테스트 시나리오 탭에서 사람이 고친 행만 실행 단계를 다시 만든다 (TC 번호·차수 기록·이슈 연결 유지)
 function applyEditedTests() {
   var t0 = Date.now();
   if (findRunning_()) throw new Error('QA 실행 중에는 반영할 수 없습니다. 실행이 끝난 뒤 다시 시도하세요.');
@@ -483,7 +501,7 @@ function applyEditedTests() {
         '테스트 항목: ' + r.data[2] + '\n사전 조건: ' + r.data[4] + '\n수행 단계:\n' + r.data[5] + '\n기대 결과:\n' + r.data[6]));
       if (!o.steps || !o.steps.length) throw new Error('빈 실행 단계');
       tc.getRange(r.row, 8).setValue(JSON.stringify(o.steps));
-      tc.getRange(r.row, 9).setValue(tcHash_(r.data));
+      tc.getRange(r.row, 9).setValue(tcHash_(tc.getRange(r.row, 1, 1, TC_FIXED_COLS).getValues()[0]));
       done++;
     } catch (e) {
       failed.push(r.data[0]);
@@ -779,7 +797,7 @@ function startQaRun(opts) {
     if (!rows.length) throw new Error('먼저 테스트를 만드세요.');
     var ids = {}, dup = [], noId = 0;
     rows.forEach(function (r) { if (!r.id) noId++; else { if (ids[r.id]) dup.push(r.id); ids[r.id] = 1; } });
-    if (dup.length) throw new Error('TC ID가 중복됩니다: ' + dup.join(', ') + ' → 테스트케이스 탭에서 번호를 고치세요.');
+    if (dup.length) throw new Error('TC ID가 중복됩니다: ' + dup.join(', ') + ' → 테스트 시나리오 탭에서 번호를 고치세요.');
     var edited = rows.filter(function (r) { return !r.id || r.hash !== tcHash_(r.data) || !r.stepsOk; }).map(function (r) { return r.id || '(번호 없음)'; });
     if (edited.length) throw new Error('고쳤거나 새로 추가한 테스트가 있습니다: ' + edited.slice(0, 5).join(', ') + (edited.length > 5 ? ' 외' : '') + ' → 먼저 "수정한 테스트 반영"을 누르세요.');
     var target = p.getProperty('TARGET_URL');
@@ -894,7 +912,7 @@ function json_(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 
-/* ───────────── 결과 반영: 테스트케이스 · 결함 · IA · 요약 ───────────── */
+/* ───────────── 결과 반영: 테스트케이스 · 이슈 · IA · 요약 ───────────── */
 
 function applyResults_(runId, info, results) {
   var ss = ss_();
@@ -911,7 +929,7 @@ function applyResults_(runId, info, results) {
   var tcById = {};
   tcRows_().forEach(function (r) { if (r.id) tcById[r.id] = r; });
 
-  // 2) 끝나지 않은 결함 (TC별 하나)
+  // 2) 끝나지 않은 이슈 (TC별 하나)
   var defects = d.getLastRow() > 1 ? d.getRange(2, 1, d.getLastRow() - 1, DCOLS).getValues() : [];
   var openByTc = {}, maxNo = 0;
   defects.forEach(function (r, i) {
@@ -932,7 +950,7 @@ function applyResults_(runId, info, results) {
     var cell = tc.getRange(t.row, col);
     var open = openByTc[r.id];
     var marked = open && open.data[12] === '수정완료';
-    var manual = open && open.data[16] === '직접';   // 사람이 직접 확인하기로 한 결함은 AI가 상태를 바꾸지 않는다
+    var manual = open && open.data[16] === '직접';   // 사람이 직접 확인하기로 한 이슈은 AI가 상태를 바꾸지 않는다
 
     if (r.status === '실행 불가') { cell.setValue('실행 단계 없음').setBackground('#F2F4F6'); return; }
 
@@ -977,7 +995,7 @@ function applyResults_(runId, info, results) {
       if (!manual) d.getRange(open.row, 9).setValue(r.actual);
     } else if (!recheck) {
       maxNo++;
-      var id = 'D-' + ('00' + maxNo).slice(-3);
+      var id = 'QA-' + ('00' + maxNo).slice(-3);
       var ia = String(t.data[3]);
       var screen = ia.split(/\s*,\s*/).map(function (x) { return iaScreen[x]; }).filter(String)[0] || '';
       var sev = check ? '-' : (/expectColor|expectText/.test(r.failedAction || '') ? '보통' : '높음');
@@ -988,7 +1006,7 @@ function applyResults_(runId, info, results) {
       if (shot) setShot_(d, row, shot);
       cell.setValue((check ? '확인 필요 → ' : '실패 → ') + id).setBackground(check ? '#FFF8E1' : '#FDECEA');
       stat.newDefects++;
-      L('결함 등록', id, t.data[2], check ? '확인 필요' : '열림');
+      L('이슈 등록', id, t.data[2], check ? '확인 필요' : '열림');
     } else {
       cell.setValue('실패').setBackground('#FDECEA');
     }
@@ -996,7 +1014,7 @@ function applyResults_(runId, info, results) {
 
   var runRow = findRunRow_(runId);
   ss.getSheetByName(SHEETS.RUN).getRange(runRow, 4, 1, 9).setValues([[now_(), info.target, stat.total, stat.pass, stat.fail, stat.newDefects, stat.verified, stat.reopened, recheck ? '완료(재확인)' : '완료']]);
-  logs.unshift([now_(), recheck ? '재확인 실행' : 'QA 실행', label, '테스트 ' + stat.total + '건', '통과 ' + stat.pass + ' · 문제 ' + stat.fail + ' · 새 결함 ' + stat.newDefects + ' · 종료 ' + stat.verified + ' · 재오픈 ' + stat.reopened, 'AI']);
+  logs.unshift([now_(), recheck ? '재확인 실행' : 'QA 실행', label, '테스트 ' + stat.total + '건', '통과 ' + stat.pass + ' · 문제 ' + stat.fail + ' · 새 이슈 ' + stat.newDefects + ' · 종료 ' + stat.verified + ' · 재오픈 ' + stat.reopened, 'AI']);
   var h = ss.getSheetByName(SHEETS.HISTORY);
   h.getRange(h.getLastRow() + 1, 1, logs.length, 6).setValues(logs);
   if (!recheck) updateIaResults_(label, col);
@@ -1021,7 +1039,7 @@ function updateIaResults_(round, col) {
     var v = String(r[col - 1]);
     String(r[3]).split(/\s*,\s*/).forEach(function (id) {
       if (!id) return;
-      var m = v.match(/→ (D-\d+)/);
+      var m = v.match(/→ ([A-Z]+-\d+)/);
       if (m) (res[id] = res[id] || []).push(m[1]);
       else if (!res[id]) res[id] = [];
     });
@@ -1087,7 +1105,7 @@ function rebuildSummary_() {
 
   sh.getRange('A1').setValue('QA 현황').setFontSize(16).setFontWeight('bold');
   sh.getRange('A2').setValue(last ? '최근 ' + last[0] + ' QA · ' + (last[3] instanceof Date ? Utilities.formatDate(last[3], 'Asia/Seoul', 'M월 d일 HH:mm') : last[3]) : '아직 QA를 실행하지 않았습니다. 메뉴 QA 자동화 → QA 실행').setFontColor('#8B95A1');
-  var kpi = [['미해결 결함', open + reopen + check, '#FFF5F5', '#C2410C'], ['그중 재오픈', reopen, '#FFF3E0', '#C2410C'],
+  var kpi = [['미해결 이슈', open + reopen + check, '#FFF5F5', '#C2410C'], ['그중 재오픈', reopen, '#FFF3E0', '#C2410C'],
              ['기획자 확인 필요', check, '#FFF8E1', '#8A6D00'], ['종료', closed, '#E8F5E9', '#1B7F3B'],
              ['최근 통과', last ? last[6] + ' / ' + last[5] : '-', '#F2F4F6', '#191F28']];
   kpi.forEach(function (k, i) {
@@ -1104,7 +1122,7 @@ function rebuildSummary_() {
     var s = screens[r[4]] = screens[r[4]] || { ia: 0, open: 0, closed: 0 };
     if (r[14] === '종료') s.closed++; else s.open++;
   });
-  var t1 = [['화면별', '확인 항목', '미해결 결함', '종료']];
+  var t1 = [['화면별', '확인 항목', '미해결 이슈', '종료']];
   Object.keys(screens).forEach(function (k) { if (k) t1.push([k, screens[k].ia, screens[k].open, screens[k].closed]); });
   sh.getRange(7, 1, t1.length, 4).setValues(t1);
   sh.getRange(7, 1, 1, 4).setFontWeight('bold').setBackground('#F2F4F6');
