@@ -34,18 +34,24 @@ var DEFAULT_REPO = 'kimdo127-cloud/ax-qa-automation';
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('QA 자동화')
-    .addItem('QA 실행 창 열기', 'showSidebar')
+    .addItem('▶ QA 시작', 'showSidebar')
     .addSeparator()
     .addItem('설정 (키 입력)', 'showSettings')
-    .addItem('시트 초기 구성', 'setupSheets')
-    .addItem('QA 기록 초기화 (시연용)', 'resetRecords')
+    .addItem('처음부터 다시 (모든 기록 지우기)', 'resetAll')
     .addToUi();
 }
 
 function showSidebar() {
   setupSheets();
+  rebuildSummary_();
   var html = HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('QA 자동화');
   SpreadsheetApp.getUi().showSidebar(html);
+}
+
+function openSheet(name) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(name);
+  if (sh) ss.setActiveSheet(sh);
 }
 
 function showSettings() {
@@ -69,11 +75,53 @@ function setupSheets() {
   var d = ss.getSheetByName(SHEETS.DEFECT);
   var rule = SpreadsheetApp.newDataValidation().requireValueInList(['수정중', '수정완료'], true).setAllowInvalid(false).build();
   d.getRange(2, 13, 500, 1).setDataValidation(rule);
-  var first = ss.getSheets()[0];
-  if (first.getName() === 'Sheet1' || first.getName() === '시트1') {
-    if (first.getLastRow() === 0) ss.deleteSheet(first);
-  }
+  ss.getSheets().forEach(function (sh) {
+    var n = sh.getName();
+    if ((n === 'Sheet1' || n === '시트1') && sh.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(sh);
+  });
+  arrangeSheets_(ss);
   return true;
+}
+
+// 사람이 보는 탭만 앞에 두고, 시스템용 탭은 숨긴다
+function arrangeSheets_(ss) {
+  var order = [SHEETS.SUMMARY, SHEETS.DEFECT, SHEETS.TC, SHEETS.IA, SHEETS.SC];
+  var color = { '요약': '#191F28', '결함': '#F04452', '테스트케이스': '#3182F6', 'IA': '#8B95A1', '테스트 시나리오': '#8B95A1' };
+  order.forEach(function (n, i) {
+    var sh = ss.getSheetByName(n);
+    if (!sh) return;
+    ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1);
+    sh.setTabColor(color[n]); sh.showSheet();
+  });
+  ss.getSheets().forEach(function (sh) {
+    var n = sh.getName();
+    if (n === SHEETS.INPUT || n === SHEETS.RUN || n.indexOf('백업') > -1) sh.hideSheet();
+  });
+  var d = ss.getSheetByName(SHEETS.DEFECT);
+  [70, 50, 60, 90, 80, 200, 200, 180, 200, 130, 70, 50, 90, 140, 60, 260].forEach(function (w, i) { d.setColumnWidth(i + 1, w); });
+  d.getRange('A:P').setWrap(true).setVerticalAlignment('top');
+  var tc = ss.getSheetByName(SHEETS.TC);
+  [55, 60, 200, 110, 160, 240, 240].forEach(function (w, i) { tc.setColumnWidth(i + 1, w); });
+  tc.getRange('A:G').setWrap(true).setVerticalAlignment('top');
+  var ia = ss.getSheetByName(SHEETS.IA);
+  [55, 80, 70, 140, 60, 260, 120, 140].forEach(function (w, i) { ia.setColumnWidth(i + 1, w); });
+  ss.setActiveSheet(ss.getSheetByName(SHEETS.SUMMARY));
+}
+
+// 시연·새 프로젝트용: 모든 기록을 지우고 빈 상태로
+function resetAll() {
+  var ss = ss_();
+  [SHEETS.INPUT, SHEETS.IA, SHEETS.SC, SHEETS.TC, SHEETS.DEFECT, SHEETS.RUN].forEach(function (n) {
+    var sh = ss.getSheetByName(n);
+    if (sh && sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
+  });
+  var tc = ss.getSheetByName(SHEETS.TC);
+  if (tc.getMaxColumns() > TC_FIXED_COLS) tc.deleteColumns(TC_FIXED_COLS + 1, tc.getMaxColumns() - TC_FIXED_COLS);
+  ss.getSheets().forEach(function (sh) { if (sh.getName().indexOf('백업') > -1) ss.deleteSheet(sh); });
+  CacheService.getScriptCache().remove('GEN_CTX');
+  props_().deleteProperty('PROGRESS');
+  setupSheets();
+  rebuildSummary_();
 }
 
 function resetRecords() {
@@ -170,7 +218,7 @@ function generateTestCases() {
   var tcSheet = ss.getSheetByName(SHEETS.TC);
   if (tcSheet.getLastRow() > 1) {
     var stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'MMdd_HHmm');
-    tcSheet.copyTo(ss).setName('테스트케이스_백업_' + stamp);
+    tcSheet.copyTo(ss).setName('테스트케이스_백업_' + stamp).hideSheet();
   }
   resetTcSheet_();
   writeRows_(SHEETS.TC, (out.testcases || []).map(function (r) {
@@ -612,33 +660,40 @@ function setShot_(sheet, row, shot) {
 function rebuildSummary_() {
   var ss = ss_();
   var sh = ss.getSheetByName(SHEETS.SUMMARY);
-  sh.clear();
-  var ia = ss.getSheetByName(SHEETS.IA), tc = ss.getSheetByName(SHEETS.TC), d = ss.getSheetByName(SHEETS.DEFECT), run = ss.getSheetByName(SHEETS.RUN);
+  sh.clear(); sh.clearFormats();
+  var ia = ss.getSheetByName(SHEETS.IA), d = ss.getSheetByName(SHEETS.DEFECT), run = ss.getSheetByName(SHEETS.RUN);
   var iaRows = ia.getLastRow() > 1 ? ia.getRange(2, 1, ia.getLastRow() - 1, 8).getValues() : [];
   var dRows = d.getLastRow() > 1 ? d.getRange(2, 1, d.getLastRow() - 1, 16).getValues() : [];
+  var runRows = run.getLastRow() > 1 ? run.getRange(2, 1, run.getLastRow() - 1, 12).getValues().filter(function (r) { return r[11] === '완료'; }) : [];
+  var open = 0, reopen = 0, closed = 0;
+  dRows.forEach(function (r) { if (r[14] === '종료') closed++; else if (r[14] === '재오픈') reopen++; else if (r[0]) open++; });
+  var last = runRows.length ? runRows[runRows.length - 1] : null;
+
+  sh.getRange('A1').setValue('QA 현황').setFontSize(16).setFontWeight('bold');
+  sh.getRange('A2').setValue(last ? '최근 ' + last[0] + ' QA · ' + (last[3] instanceof Date ? Utilities.formatDate(last[3], 'Asia/Seoul', 'M월 d일 HH:mm') : last[3]) : '아직 QA를 실행하지 않았습니다. 메뉴 QA 자동화 → ▶ QA 시작').setFontColor('#8B95A1');
+  var kpi = [['열린 결함', open, '#FFF5F5', '#C2410C'], ['재오픈', reopen, '#FFF3E0', '#C2410C'], ['종료', closed, '#E8F5E9', '#1B7F3B'],
+             ['최근 통과', last ? last[6] + ' / ' + last[5] : '-', '#F2F4F6', '#191F28']];
+  kpi.forEach(function (k, i) {
+    var col = 1 + i * 2;
+    sh.getRange(4, col, 1, 2).merge().setValue(k[0]).setFontColor('#4E5968').setBackground(k[2]).setHorizontalAlignment('center');
+    sh.getRange(5, col, 1, 2).merge().setValue(k[1]).setFontSize(22).setFontWeight('bold').setFontColor(k[3]).setBackground(k[2]).setHorizontalAlignment('center');
+  });
+  sh.setRowHeight(5, 44);
+
   var screens = {};
-  iaRows.forEach(function (r) {
-    var s = screens[r[1]] = screens[r[1]] || { ia: 0, fail: 0, open: 0, closed: 0 };
-    s.ia++;
-    if (String(r[7]).indexOf('실패') > -1) s.fail++;
-  });
-  dRows.forEach(function (r) {
-    var s = screens[r[4]] = screens[r[4]] || { ia: 0, fail: 0, open: 0, closed: 0 };
-    if (r[14] === '종료') s.closed++; else s.open++;
-  });
-  var out = [['화면별 현황', '', '', '', ''], ['화면', 'IA 요소 수', '최근 차수 실패 요소', '열린 결함', '종료 결함']];
-  Object.keys(screens).forEach(function (k) { var s = screens[k]; out.push([k, s.ia, s.fail, s.open, s.closed]); });
-  sh.getRange(1, 1, out.length, 5).setValues(out);
-  sh.getRange(1, 1).setFontWeight('bold').setFontSize(13);
-  sh.getRange(2, 1, 1, 5).setFontWeight('bold').setBackground('#F2F4F6');
-  var start = out.length + 2;
-  var runRows = run.getLastRow() > 1 ? run.getRange(2, 1, run.getLastRow() - 1, 12).getValues() : [];
-  var r2 = [['차수별 결과', '', '', '', '', ''], ['차수', '전체', '통과', '실패', '재확인 통과', '재오픈']];
-  runRows.forEach(function (r) { if (r[11] === '완료') r2.push([r[0], r[5], r[6], r[7], r[9], r[10]]); });
-  sh.getRange(start, 1, r2.length, 6).setValues(r2);
-  sh.getRange(start, 1).setFontWeight('bold').setFontSize(13);
-  sh.getRange(start + 1, 1, 1, 6).setFontWeight('bold').setBackground('#F2F4F6');
-  sh.autoResizeColumns(1, 6);
+  iaRows.forEach(function (r) { var s = screens[r[1]] = screens[r[1]] || { ia: 0, open: 0, closed: 0 }; s.ia++; });
+  dRows.forEach(function (r) { if (!r[0]) return; var s = screens[r[4]] = screens[r[4]] || { ia: 0, open: 0, closed: 0 }; if (r[14] === '종료') s.closed++; else s.open++; });
+  var t1 = [['화면별', '확인 항목', '열린 결함', '종료']];
+  Object.keys(screens).forEach(function (k) { if (k) t1.push([k, screens[k].ia, screens[k].open, screens[k].closed]); });
+  sh.getRange(7, 1, t1.length, 4).setValues(t1);
+  sh.getRange(7, 1, 1, 4).setFontWeight('bold').setBackground('#F2F4F6');
+
+  var t2 = [['차수별', '통과', '실패', '재확인 통과', '재오픈']];
+  runRows.forEach(function (r) { t2.push([r[0], r[6], r[7], r[9], r[10]]); });
+  sh.getRange(7, 6, t2.length, 5).setValues(t2);
+  sh.getRange(7, 6, 1, 5).setFontWeight('bold').setBackground('#F2F4F6');
+  for (var c = 1; c <= 10; c++) sh.setColumnWidth(c, c === 1 || c === 6 ? 110 : 80);
+  sh.setHiddenGridlines(true);
 }
 
 /* ───────────── 공통 ───────────── */

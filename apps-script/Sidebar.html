@@ -3,121 +3,114 @@
 <head>
 <base target="_top">
 <style>
-  body { font-family: -apple-system, "Apple SD Gothic Neo", Arial, sans-serif; font-size: 13px; color: #191F28; margin: 0; padding: 14px; }
-  h3 { font-size: 14px; margin: 18px 0 8px; }
-  h3:first-child { margin-top: 0; }
-  label { display: block; color: #4E5968; margin: 10px 0 4px; }
-  input, textarea { width: 100%; box-sizing: border-box; border: 1px solid #D1D6DB; border-radius: 8px; padding: 8px; font-size: 13px; font-family: inherit; }
-  textarea { height: 110px; resize: vertical; }
-  button { width: 100%; margin-top: 12px; height: 38px; border: 0; border-radius: 8px; background: #3182F6; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
-  button.sub { background: #F2F4F6; color: #333D4B; }
+  body { font-family: -apple-system, "Apple SD Gothic Neo", Arial, sans-serif; font-size: 13px; color: #191F28; margin: 0; padding: 14px; background: #F9FAFB; }
+  .warn { background: #FFF3E0; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; display: none; }
+  .card { background: #fff; border: 1px solid #E5E8EB; border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+  .head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+  .num { width: 22px; height: 22px; border-radius: 50%; background: #191F28; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
+  .done .num { background: #1B7F3B; }
+  label { display: block; color: #4E5968; font-size: 12px; margin: 8px 0 4px; }
+  input, textarea { width: 100%; box-sizing: border-box; border: 1px solid #D1D6DB; border-radius: 8px; padding: 9px; font-size: 13px; font-family: inherit; }
+  textarea { height: 96px; resize: vertical; }
+  button { width: 100%; height: 42px; border: 0; border-radius: 10px; background: #3182F6; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
   button:disabled { background: #D1D6DB; cursor: default; }
-  .status { margin-top: 10px; padding: 10px; border-radius: 8px; background: #F2F4F6; line-height: 1.6; white-space: pre-line; }
-  .warn { background: #FFF3E0; }
-  .ok { background: #E8F5E9; }
-  .err { background: #FDECEA; }
-  .keys span { display: inline-block; margin-right: 8px; }
-  .hint { color: #8B95A1; font-size: 12px; margin-top: 4px; }
+  button.ghost { background: #F2F4F6; color: #333D4B; height: 36px; font-size: 13px; margin-top: 8px; }
+  .msg { margin-top: 10px; font-size: 12px; line-height: 1.6; white-space: pre-line; color: #4E5968; }
+  .msg.ok { color: #1B7F3B; } .msg.err { color: #C2410C; }
+  .desc { color: #8B95A1; font-size: 12px; margin: -2px 0 10px; }
+  .foot { text-align: center; margin-top: 6px; }
+  .foot a { color: #8B95A1; font-size: 12px; cursor: pointer; text-decoration: underline; }
 </style>
 </head>
 <body>
-  <h3>설정 상태</h3>
-  <div class="status keys" id="keys">확인 중…</div>
-  <button class="sub" onclick="google.script.run.showSettings()">설정 (키 입력)</button>
+  <div class="warn" id="warn">처음 한 번 키 설정이 필요합니다. 아래 <b>설정</b>을 눌러 주세요.</div>
 
-  <h3>① IA · 테스트케이스 만들기</h3>
-  <label>피그마 링크 (디자인 기준)</label>
-  <input id="figmaUrl" placeholder="https://www.figma.com/design/...">
-  <label>테스트 대상 URL (HTML 시작 화면)</label>
-  <input id="targetUrl" placeholder="https://.../index.html">
-  <label>기획 메모 (화면 동작 · 예외 · 테스트 계정)</label>
-  <textarea id="memo" placeholder="예) 테스트 계정 parent@test.com / 1234&#10;로그인 성공 → 수강 신청 화면&#10;비밀번호가 틀리면 오류 문구 표시"></textarea>
-  <button id="genBtn" onclick="gen()">IA · 시나리오 · 테스트케이스 만들기</button>
-  <div class="hint">Gemini가 피그마와 기획 메모를 기준으로 작성합니다. 30초~1분 걸립니다.</div>
+  <div class="card" id="c1">
+    <div class="head"><span class="num">1</span>무엇을 테스트할까요?</div>
+    <label>피그마 링크</label>
+    <input id="figmaUrl" placeholder="https://www.figma.com/design/...">
+    <label>테스트할 화면 주소</label>
+    <input id="targetUrl" placeholder="https://.../index.html">
+    <label>화면 동작 메모 (테스트 계정, 버튼을 누르면 어떻게 되는지)</label>
+    <textarea id="memo" placeholder="예)&#10;테스트 계정 parent@test.com / 1234&#10;로그인하면 수강 신청 화면으로 이동&#10;비밀번호가 틀리면 오류 문구 표시"></textarea>
+  </div>
 
-  <h3>② QA 실행</h3>
-  <button id="runBtn" onclick="run()">QA 실행 (다음 차수)</button>
-  <div class="hint">GitHub Actions의 실제 브라우저가 테스트케이스대로 화면을 눌러 봅니다. 1~3분 걸립니다.<br>개발자가 결함 시트에 '수정완료'를 표기한 건은 다음 차수에서 다시 확인해 통과면 종료, 아니면 재오픈합니다.</div>
-  <div class="status" id="msg" style="display:none"></div>
-  <div class="hint" id="models"></div>
+  <div class="card" id="c2">
+    <div class="head"><span class="num">2</span>테스트 만들기</div>
+    <div class="desc">AI가 피그마를 보고 확인할 항목을 만듭니다. (약 1~2분)</div>
+    <button id="genBtn" onclick="gen()">테스트 만들기</button>
+    <div class="msg" id="m2"></div>
+  </div>
+
+  <div class="card" id="c3">
+    <div class="head"><span class="num">3</span>QA 실행</div>
+    <div class="desc">실제 브라우저가 화면을 눌러 보고, 문제를 결함 탭에 적습니다. (약 1~2분)<br>개발자가 '수정완료'라고 적은 건은 다시 확인해 진짜 고쳐진 것만 종료합니다.</div>
+    <button id="runBtn" onclick="run()">QA 실행</button>
+    <div class="msg" id="m3"></div>
+    <button class="ghost" id="goDefect" style="display:none" onclick="google.script.run.openSheet('결함')">결함 탭 보기</button>
+  </div>
+
+  <div class="foot"><a onclick="google.script.run.showSettings()">설정 (키 입력)</a></div>
 
 <script>
-  function show(text, cls) {
-    var m = document.getElementById('msg');
-    m.style.display = 'block';
-    m.className = 'status ' + (cls || '');
-    m.textContent = text;
-  }
-  function loadKeys() {
-    google.script.run.withSuccessHandler(function (s) {
-      document.getElementById('keys').innerHTML =
-        '<span>' + (s.gemini ? '✅' : '⬜') + ' Gemini</span>' +
-        '<span>' + (s.github ? '✅' : '⬜') + ' GitHub</span>' +
-        '<span>' + (s.figma ? '✅' : '⬜') + ' 피그마</span>' +
-        '<span>' + (s.webappUrl ? '✅' : '⬜') + ' 웹앱 주소</span>';
-    }).getSettingsStatus();
-  }
+  function msg(id, t, cls) { var m = document.getElementById(id); m.className = 'msg ' + (cls || ''); m.textContent = t; }
+  google.script.run.withSuccessHandler(function (s) {
+    if (!(s.gemini && s.github && s.webappUrl)) document.getElementById('warn').style.display = 'block';
+  }).getSettingsStatus();
+
   function gen() {
-    var b = document.getElementById('genBtn');
-    b.disabled = true;
-    show('작성 중… (피그마 읽기 → HTML 확인 → Gemini 작성)');
+    var b = document.getElementById('genBtn'); b.disabled = true;
     var t0 = Date.now();
+    msg('m2', '만드는 중…');
     var pt = setInterval(function () {
       google.script.run.withSuccessHandler(function (p) {
-        if (b.disabled) show('작성 중… ' + Math.round((Date.now() - t0) / 1000) + '초\n' + p);
+        if (b.disabled) msg('m2', '만드는 중… ' + Math.round((Date.now() - t0) / 1000) + '초\n' + p.replace(/^\S+ \S+ /, ''));
       }).getProgress();
     }, 4000);
-    google.script.run
-      .withSuccessHandler(function (r1) {
-        show('IA ' + r1.ia + '행 · 시나리오 ' + r1.scenarios + '개 완료. 테스트케이스 작성 중…');
-        google.script.run
-          .withSuccessHandler(function (r) {
-            b.disabled = false; clearInterval(pt);
-            show('완료: IA ' + r.ia + '행 · 시나리오 ' + r.scenarios + '개 · 테스트케이스 ' + r.testcases + '개\nIA · 테스트 시나리오 · 테스트케이스 시트를 확인하세요.', 'ok');
-          })
-          .withFailureHandler(function (e) { b.disabled = false; clearInterval(pt); show('오류(테스트케이스): ' + e.message, 'err'); })
-          .generateTestCases();
-      })
-      .withFailureHandler(function (e) { b.disabled = false; clearInterval(pt); show('오류: ' + e.message, 'err'); })
-      .generateTestDesign({
-        figmaUrl: document.getElementById('figmaUrl').value,
-        targetUrl: document.getElementById('targetUrl').value,
-        memo: document.getElementById('memo').value
-      });
+    var fail = function (e) { b.disabled = false; clearInterval(pt); msg('m2', '문제가 생겼습니다: ' + e.message, 'err'); };
+    google.script.run.withSuccessHandler(function () {
+      google.script.run.withSuccessHandler(function (r) {
+        b.disabled = false; clearInterval(pt);
+        document.getElementById('c2').classList.add('done');
+        msg('m2', '완료 · 확인 항목 ' + r.ia + '개 · 테스트 ' + r.testcases + '개\n테스트케이스 탭에서 확인할 수 있습니다.', 'ok');
+        google.script.run.openSheet('테스트케이스');
+      }).withFailureHandler(fail).generateTestCases();
+    }).withFailureHandler(fail).generateTestDesign({
+      figmaUrl: document.getElementById('figmaUrl').value,
+      targetUrl: document.getElementById('targetUrl').value,
+      memo: document.getElementById('memo').value
+    });
   }
+
   var timer = null, started = 0;
   function run() {
-    var b = document.getElementById('runBtn');
-    b.disabled = true;
-    show('GitHub Actions에 실행 요청 중…');
-    google.script.run
-      .withSuccessHandler(function (r) {
-        started = Date.now();
-        show(r.round + '차 QA 실행 중… 실제 브라우저가 화면을 눌러 보고 있습니다.');
-        timer = setInterval(function () { poll(r.runId); }, 6000);
-      })
-      .withFailureHandler(function (e) { b.disabled = false; show('오류: ' + e.message, 'err'); })
-      .startQaRun();
+    var b = document.getElementById('runBtn'); b.disabled = true;
+    document.getElementById('goDefect').style.display = 'none';
+    msg('m3', '시작하는 중…');
+    google.script.run.withSuccessHandler(function (r) {
+      started = Date.now();
+      msg('m3', r.round + '차 QA 실행 중… 브라우저가 화면을 눌러 보고 있습니다.');
+      timer = setInterval(function () { poll(r.runId); }, 6000);
+    }).withFailureHandler(function (e) { b.disabled = false; msg('m3', '문제가 생겼습니다: ' + e.message, 'err'); }).startQaRun();
   }
   function poll(runId) {
     google.script.run.withSuccessHandler(function (s) {
-      var sec = Math.round((Date.now() - started) / 1000);
+      var b = document.getElementById('runBtn');
       if (s.status === '완료') {
-        clearInterval(timer);
-        document.getElementById('runBtn').disabled = false;
-        show(s.round + ' QA 완료\n전체 ' + s.total + ' · 통과 ' + s.pass + ' · 실패 ' + s.fail +
-          '\n새 결함 ' + s.newDefects + ' · 재확인 통과 ' + s.verified + ' · 재오픈 ' + s.reopened +
-          '\n결함 · 테스트케이스 · IA · 요약 시트를 확인하세요.', s.fail ? 'warn' : 'ok');
-      } else if (String(s.status).indexOf('오류') === 0 || String(s.status).indexOf('시작 실패') === 0) {
-        clearInterval(timer);
-        document.getElementById('runBtn').disabled = false;
-        show(s.status, 'err');
+        clearInterval(timer); b.disabled = false;
+        var t = s.round + ' QA 완료 · 통과 ' + s.pass + ' / 실패 ' + s.fail;
+        if (s.newDefects) t += '\n새 결함 ' + s.newDefects + '건';
+        if (s.verified || s.reopened) t += '\n재확인: 종료 ' + s.verified + '건 · 재오픈 ' + s.reopened + '건';
+        msg('m3', t, s.fail ? '' : 'ok');
+        document.getElementById('goDefect').style.display = 'block';
+        google.script.run.openSheet('요약');
+      } else if (/^(오류|시작 실패)/.test(String(s.status))) {
+        clearInterval(timer); b.disabled = false; msg('m3', '문제가 생겼습니다: ' + s.status, 'err');
       } else {
-        show(s.round + ' QA 실행 중… (' + sec + '초)' + (sec > 300 ? '\n5분이 넘었습니다. GitHub Actions 화면에서 상태를 확인하세요.' : ''));
+        msg('m3', s.round + ' QA 실행 중… ' + Math.round((Date.now() - started) / 1000) + '초');
       }
     }).getRunStatus(runId);
   }
-  loadKeys();
 </script>
 </body>
 </html>
