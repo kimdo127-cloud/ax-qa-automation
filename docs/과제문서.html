@@ -5,113 +5,151 @@
 <title>화면 QA 자동화</title>
 <style>
   @page { size: A4; margin: 14mm; }
-  body { font-family: -apple-system, "Apple SD Gothic Neo", sans-serif; font-size: 12px; color: #191F28; line-height: 1.6; margin: 0; }
-  h1 { font-size: 22px; margin: 0 0 6px; }
-  .lead { font-size: 13px; color: #333D4B; margin: 0 0 4px; }
-  .meta { font-size: 11px; color: #8B95A1; margin: 0 0 18px; }
-  h2 { font-size: 15px; margin: 22px 0 10px; padding-bottom: 5px; border-bottom: 2px solid #191F28; }
-  h2 small { font-size: 11px; color: #8B95A1; font-weight: 400; margin-left: 6px; }
-  h3 { font-size: 12.5px; margin: 14px 0 6px; color: #4E5968; }
+  body { font-family: -apple-system, "Apple SD Gothic Neo", sans-serif; font-size: 11.5px; color: #191F28; line-height: 1.6; margin: 0; }
+  h1 { font-size: 21px; margin: 0 0 4px; }
+  .meta { font-size: 10.5px; color: #8B95A1; margin: 0 0 14px; }
+  h2 { font-size: 14.5px; margin: 20px 0 8px; padding-bottom: 5px; border-bottom: 2px solid #191F28; }
+  h3 { font-size: 12px; margin: 12px 0 6px; color: #333D4B; }
   table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #E5E8EB; padding: 6px 9px; text-align: left; vertical-align: top; }
-  th { background: #F2F4F6; font-weight: 600; width: 22%; }
+  th, td { border: 1px solid #E5E8EB; padding: 5px 9px; text-align: left; vertical-align: top; }
+  th { background: #F2F4F6; font-weight: 600; }
+  .row th { width: 20%; }
+  .summary { border: 1px solid #191F28; border-radius: 8px; padding: 10px 14px; }
+  .summary div { display: flex; gap: 10px; margin: 2px 0; }
+  .summary b { width: 54px; flex: none; }
+  .problem { background: #191F28; color: #fff; border-radius: 8px; padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin: 8px 0; }
   .flow { display: flex; align-items: stretch; gap: 4px; margin: 6px 0; }
-  .step { flex: 1; border: 1px solid #D1D6DB; border-radius: 8px; padding: 7px 6px; text-align: center; font-size: 11px; background: #fff; }
-  .step .who { display: block; font-size: 10px; color: #8B95A1; margin-bottom: 2px; }
+  .step { flex: 1; border: 1px solid #D1D6DB; border-radius: 7px; padding: 6px 5px; text-align: center; font-size: 10.5px; }
+  .step .who { display: block; font-size: 9.5px; color: #8B95A1; }
   .step.bad { border-color: #F04452; background: #FFF5F5; }
-  .step.ai { border-color: #3182F6; background: #F2F8FF; }
-  .arr { align-self: center; color: #B0B8C1; font-size: 13px; }
-  .shots { display: flex; gap: 6px; align-items: flex-start; margin: 8px 0 6px; }
-  .shot { flex: 1; text-align: center; }
-  .shot img { width: 100%; height: 92px; object-fit: cover; object-position: left top; border: 1px solid #D1D6DB; border-radius: 6px; }
-  .shot .n { display: inline-block; width: 16px; height: 16px; line-height: 16px; border-radius: 50%; background: #191F28; color: #fff; font-size: 10px; margin: 4px 3px 0 0; }
-  .shot span { font-size: 11px; }
-  .result { display: flex; gap: 8px; margin: 8px 0; }
-  .card { flex: 1; border-radius: 8px; padding: 10px 12px; background: #F2F4F6; }
-  .card b { display: block; font-size: 12px; margin-bottom: 2px; }
+  .step.auto { border-color: #3182F6; background: #F2F8FF; }
+  .step.gate { border-color: #191F28; border-width: 2px; }
+  .arr { align-self: center; color: #B0B8C1; }
+  .chain { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 11px; }
+  .chain span { border: 1px solid #D1D6DB; border-radius: 14px; padding: 3px 10px; background: #fff; }
+  .shots { display: flex; gap: 6px; margin: 8px 0 4px; }
+  .shot { flex: 1; text-align: center; font-size: 10.5px; }
+  .shot img { width: 100%; height: 86px; object-fit: cover; object-position: left top; border: 1px solid #D1D6DB; border-radius: 6px; }
+  .cards { display: flex; gap: 8px; margin: 8px 0; }
+  .card { flex: 1; background: #F2F4F6; border-radius: 8px; padding: 8px 12px; }
+  .card b { display: block; }
   .ok { color: #1B7F3B; font-weight: 600; }
   .ng { color: #C2410C; font-weight: 600; }
-  ol, ul { margin: 4px 0; padding-left: 18px; }
+  ul { margin: 4px 0; padding-left: 18px; }
   li { margin: 2px 0; }
+  .note { font-size: 10.5px; color: #8B95A1; }
 </style>
 </head>
 <body>
 
-<h1>화면 QA 자동화</h1>
-<p class="lead">구글 시트에서 버튼을 누르면 AI가 테스트 목록을 만들고, 실제 브라우저가 화면을 눌러 본 뒤, 고쳤다는 건을 다시 확인해 진짜 고쳐진 것만 종료합니다.</p>
-<p class="meta">4회차 과제 · 선택안 2안(상용 시스템 + 자동화) · 구글 시트 + Gemini + GitHub Actions · 예제 자료는 가상</p>
+<h1>화면 QA 결함 검증 자동화</h1>
+<p class="meta">4회차 과제 · 선택안 2안(상용 시스템 + 자동화) · 구글 시트 · Apps Script · Gemini · GitHub Actions(Playwright) · 예제 데이터는 가상</p>
 
-<h2>1. 현재 업무 분석</h2>
-<table>
-  <tr><th>업무</th><td>기획자의 화면 QA: 퍼블리싱 화면이 나온 뒤부터 모든 문제가 실제로 고쳐진 것을 확인할 때까지</td></tr>
-</table>
-
-<h3>지금 흐름</h3>
-<div class="flow">
-  <div class="step"><span class="who">기획자</span>피그마와 화면을<br>눈으로 비교</div><div class="arr">→</div>
-  <div class="step"><span class="who">기획자</span>데브옵스에<br>문제 등록</div><div class="arr">→</div>
-  <div class="step bad"><span class="who">기획자</span>엑셀에<br>다시 옮겨 적기</div><div class="arr">→</div>
-  <div class="step"><span class="who">개발자</span>"해결"로<br>상태 변경</div><div class="arr">→</div>
-  <div class="step bad"><span class="who">기획자</span>전부 다시<br>눌러 보기</div>
+<div class="summary">
+  <div><b>문제</b><span>결함 종료가 개발자의 상태 변경에만 의존해, 기획자가 매 차수 전수 재확인과 이중 기록을 반복한다.</span></div>
+  <div><b>해결</b><span>피그마를 기준으로 테스트를 자동 생성·실행하고, 결함은 시스템이 재검증한 뒤에만 종료되도록 흐름을 바꿨다.</span></div>
+  <div><b>결과</b><span>예제 2차 QA에서 "수정완료" 5건 중 실제 수정 3건만 종료, 미수정 2건은 자동 재오픈.</span></div>
 </div>
 
-<h3>문제</h3>
+<h2>1. 현재 업무 분석</h2>
+<table class="row">
+  <tr><th>업무 범위</th><td>퍼블리싱 화면 전달 → 화면 QA → 결함 등록 → 수정 확인 → 결함 종료 (차수 반복)</td></tr>
+  <tr><th>참여자</th><td>기획자(QA 주관) · 디자이너(결함 등록) · 개발자(수정)</td></tr>
+  <tr><th>사용 도구</th><td>피그마(기준) · HTML 화면(대상) · Azure DevOps(결함) · 엑셀(QA 관리)</td></tr>
+</table>
+
+<h3>As-Is 프로세스</h3>
+<div class="flow">
+  <div class="step"><span class="who">기획자</span>피그마↔화면<br>육안 비교</div><div class="arr">→</div>
+  <div class="step"><span class="who">기획·디자인</span>데브옵스<br>결함 등록</div><div class="arr">→</div>
+  <div class="step bad"><span class="who">기획자</span>엑셀로<br>재기록</div><div class="arr">→</div>
+  <div class="step"><span class="who">개발자</span>상태<br>"해결" 변경</div><div class="arr">→</div>
+  <div class="step bad"><span class="who">기획자</span>전수<br>재확인</div><div class="arr">→</div>
+  <div class="step bad"><span class="who">기획자</span>차수별<br>엑셀 갱신</div>
+</div>
+
+<h3>문제 정의</h3>
+<div class="problem">결함의 종료 여부가 "검증"이 아니라 개발자의 상태 변경으로 결정되어, 기획자가 같은 결함을 차수마다 다시 확인하고 다시 기록한다.</div>
 <table>
-  <tr><th>빠뜨림</th><td>확인할 화면·버튼 목록이 없어 차수마다 놓치는 곳이 생김</td></tr>
-  <tr><th>이중 기록</th><td>데브옵스에 올린 내용을 엑셀에 다시 옮겨 적음</td></tr>
-  <tr><th>"해결" 불신</th><td>해결로 바뀌어도 안 고쳐진 건이 있어 결국 전부 다시 확인</td></tr>
-  <tr><th>이력 분산</th><td>몇 차에 나오고, 다시 열리고, 언제 끝났는지 한눈에 안 보임</td></tr>
+  <tr><th style="width:22%">원인</th><th>현상</th></tr>
+  <tr><td>검증 단계 부재</td><td>"해결" = 수정 완료로 취급되어, 실제 미수정 건이 섞여도 구분되지 않음</td></tr>
+  <tr><td>기준 목록 부재</td><td>화면·영역·요소 단위 테스트 범위(IA)가 없어 확인 범위가 차수·담당자마다 달라짐</td></tr>
+  <tr><td>기록 위치 분산</td><td>결함은 데브옵스, 진행 관리는 엑셀에 있어 이중 기록과 이력 누락 발생</td></tr>
 </table>
 
 <h2>2. 개선 설계</h2>
-<h3>바뀐 흐름</h3>
-<div class="flow">
-  <div class="step"><span class="who">기획자</span>피그마 링크·<br>화면 주소 입력</div><div class="arr">→</div>
-  <div class="step ai"><span class="who">AI</span>화면 목록·<br>테스트 작성</div><div class="arr">→</div>
-  <div class="step ai"><span class="who">시스템</span>브라우저로<br>클릭 테스트</div><div class="arr">→</div>
-  <div class="step ai"><span class="who">시스템</span>결함·화면 캡처<br>시트에 기록</div><div class="arr">→</div>
-  <div class="step"><span class="who">개발자</span>"수정완료"<br>표기</div><div class="arr">→</div>
-  <div class="step ai"><span class="who">시스템</span>다시 테스트 →<br>종료 / 재오픈</div>
-</div>
-
-<table style="margin-top:8px">
-  <tr><th>AI</th><td>피그마·기획 메모를 기준으로 화면 목록(IA), 시나리오, 테스트케이스 작성</td></tr>
-  <tr><th>시스템</th><td>실제 브라우저로 테스트, 결함·캡처 기록, 수정완료 건 재확인</td></tr>
-  <tr><th>기획자</th><td>입력, 테스트 목록 검토, 재오픈 건 최종 판단</td></tr>
-  <tr><th>개발자</th><td>"수정완료"만 표기. 종료는 시스템이 다시 확인한 뒤에만</td></tr>
-  <tr><th>이 방식인 이유</th><td>실무자는 시트만 열면 됨 · 버튼 동작은 실제 브라우저로만 확인 가능 · 모두 무료 도구</td></tr>
+<h3>설계 원칙</h3>
+<table class="row">
+  <tr><th>기준은 하나</th><td>기대 결과는 피그마와 기획 메모에서만 가져온다 (구현 화면을 기준으로 삼지 않음)</td></tr>
+  <tr><th>기록은 한 곳</th><td>IA부터 결함·이력까지 하나의 시트에서 ID로 연결한다</td></tr>
+  <tr><th>종료는 검증 후</th><td>개발자 표기는 "수정완료"까지, 종료는 재테스트를 통과한 경우에만</td></tr>
 </table>
 
-<h2>3. 구현 결과 <small>예제: 피그마 4화면 + 문제 5개를 넣은 화면</small></h2>
-<div class="shots">
-  <div class="shot"><img src="img/c_input.jpg"><div><span class="n">1</span><span>입력</span></div></div>
-  <div class="shot"><img src="img/c_ia.jpg"><div><span class="n">2</span><span>AI 테스트 작성</span></div></div>
-  <div class="shot"><img src="img/c_run.jpg"><div><span class="n">3</span><span>브라우저 실행</span></div></div>
-  <div class="shot"><img src="img/c_defect.jpg"><div><span class="n">4</span><span>결함 + 캡처</span></div></div>
-  <div class="shot"><img src="img/c_recheck.jpg"><div><span class="n">5</span><span>재확인</span></div></div>
+<h3>To-Be 프로세스</h3>
+<div class="flow">
+  <div class="step"><span class="who">기획자</span>피그마·화면 주소·<br>기획 메모 입력</div><div class="arr">→</div>
+  <div class="step auto"><span class="who">AI</span>IA·시나리오·<br>테스트케이스 생성</div><div class="arr">→</div>
+  <div class="step"><span class="who">기획자</span>테스트 범위<br>검토</div><div class="arr">→</div>
+  <div class="step auto"><span class="who">시스템</span>브라우저 실행·<br>결함 자동 등록</div><div class="arr">→</div>
+  <div class="step"><span class="who">개발자</span>"수정완료"<br>표기</div><div class="arr">→</div>
+  <div class="step auto gate"><span class="who">시스템</span>재테스트 →<br>종료 / 재오픈</div>
 </div>
 
-<div class="result">
-  <div class="card"><b>1차 QA</b>테스트 11건 → 실패 5건<br>결함 5건 자동 등록(캡처 포함)</div>
-  <div class="card"><b>개발자</b>5건 모두 "수정완료" 표기<br>(실제로 고친 건 3건)</div>
-  <div class="card"><b>2차 QA</b>고친 건 <span class="ok">종료</span><br>안 고친 건 <span class="ng">재오픈</span></div>
+<h3>역할 (R&amp;R)</h3>
+<table>
+  <tr><th style="width:14%">주체</th><th>담당</th><th style="width:30%">결정 권한</th></tr>
+  <tr><td>AI</td><td>IA·시나리오·테스트케이스 초안 작성</td><td>없음 (초안)</td></tr>
+  <tr><td>시스템</td><td>테스트 실행, 결함·캡처 기록, 수정완료 건 재검증</td><td>통과 시 종료, 실패 시 재오픈</td></tr>
+  <tr><td>기획자</td><td>입력, 테스트 범위 검토, 재오픈·예외 건 판정</td><td>테스트 범위 확정, 최종 판정</td></tr>
+  <tr><td>개발자</td><td>수정 후 수정완료 표기</td><td>종료 권한 없음</td></tr>
+</table>
+
+<h3>데이터 구조 (추적성)</h3>
+<div class="chain"><span>IA (화면·영역·요소)</span>→<span>테스트 시나리오</span>→<span>테스트케이스 (차수별 결과)</span>→<span>결함 (캡처·이력)</span></div>
+<p class="note">모든 항목이 ID로 연결되어, 결함에서 해당 화면 요소까지 역추적하고 화면별 결함 현황을 집계할 수 있다.</p>
+
+<h3>구성 선택 근거</h3>
+<table class="row">
+  <tr><th>구글 시트</th><td>기존 엑셀 관리 방식을 유지해 도입 부담 최소화, 실무자는 시트 버튼만 사용</td></tr>
+  <tr><th>GitHub Actions</th><td>버튼 동작 검증은 실제 브라우저가 필요해 Playwright 실행 환경으로 사용 (무료)</td></tr>
+  <tr><th>Gemini</th><td>무료 등급 경량 모델로 운영비 없이 테스트 초안 생성</td></tr>
+</table>
+
+<h2>3. 구현 결과</h2>
+<div class="shots">
+  <div class="shot"><img src="img/c_input.jpg">① 입력</div>
+  <div class="shot"><img src="img/c_ia.jpg">② IA·테스트 생성</div>
+  <div class="shot"><img src="img/c_run.jpg">③ 브라우저 실행</div>
+  <div class="shot"><img src="img/c_defect.jpg">④ 결함·캡처 등록</div>
+  <div class="shot"><img src="img/c_recheck.jpg">⑤ 재검증</div>
 </div>
-<p>→ 엑셀에 옮겨 적지 않고, "해결" 표시를 믿지 않아도 진짜 고쳐진 건만 끝납니다.</p>
+<div class="cards">
+  <div class="card"><b>1차 QA</b>11건 중 5건 실패<br>결함 5건 자동 등록</div>
+  <div class="card"><b>개발자 표기</b>5건 "수정완료"<br>(실제 수정 3건)</div>
+  <div class="card"><b>2차 QA</b>3건 <span class="ok">종료</span> · 2건 <span class="ng">재오픈</span><br>표기와 실제의 차이를 자동 검출</div>
+</div>
+
+<h3>운영 시 확인할 지표</h3>
+<table class="row">
+  <tr><th>재오픈율</th><td>"수정완료" 중 재검증에서 재오픈된 비율 → 상태 표기 신뢰도</td></tr>
+  <tr><th>재확인 소요</th><td>차수당 기획자가 직접 확인하는 건수와 시간 → 전수 재확인 감소 여부</td></tr>
+  <tr><th>누락 결함</th><td>IA에 없어 테스트되지 않은 결함 수 → 테스트 범위 품질</td></tr>
+</table>
 
 <h2>4. 실행 방법</h2>
-<ol>
-  <li>구글 시트 메뉴 <b>QA 자동화 → 설정</b>: 키 3개 입력 (처음 한 번)</li>
-  <li><b>QA 실행 창</b>: 피그마 링크·화면 주소·기획 메모 입력 → <b>테스트 만들기</b></li>
-  <li><b>QA 실행</b> → 1~2분 뒤 결함 탭 확인</li>
-  <li>개발자가 <b>수정완료</b> 표기 → 다시 <b>QA 실행</b></li>
-</ol>
-
-<h2>5. 남은 문제</h2>
 <ul>
-  <li>AI가 확인 항목을 빠뜨릴 수 있음 (예: 제목 오타) → 기획자 검토 필요</li>
-  <li>테스트 단계가 잘못돼 실패로 잡히는 경우 있음 → 기획자가 최종 판단</li>
-  <li>간격·정렬 같은 세밀한 디자인 차이는 아직 미확인, 데브옵스 연결 없음</li>
+  <li>시트 메뉴 <b>QA 자동화 → 설정</b>: 키 3개 입력(최초 1회) → <b>QA 실행 창</b>: 피그마·화면 주소·기획 메모 입력 후 <b>테스트 만들기</b></li>
+  <li><b>QA 실행</b> → 결함 탭 확인 → 개발자 <b>수정완료</b> 표기 → 다시 <b>QA 실행</b></li>
 </ul>
+
+<h2>5. 한계와 다음 단계</h2>
+<table>
+  <tr><th style="width:42%">한계</th><th>다음 단계</th></tr>
+  <tr><td>AI가 일부 확인 항목을 누락 (예: 제목 오타)</td><td>IA 요소별 테스트 커버리지 점검 단계 추가</td></tr>
+  <tr><td>테스트 단계 오류로 인한 실패가 결함으로 등록될 수 있음</td><td>실패 원인을 "결함 / 테스트 오류"로 분류해 기획자 판정 큐로 분리</td></tr>
+  <tr><td>간격·정렬 등 세부 디자인 비교 미지원</td><td>피그마 수치와 화면 수치 비교 확장</td></tr>
+  <tr><td>데브옵스 미연동</td><td>결함 등록·상태 동기화를 API로 연결해 이중 기록 완전 제거</td></tr>
+</table>
 
 </body>
 </html>
