@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한빛수학 · 로그인</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+  <p class="logo">한빛수학</p>
+  <h1 class="title">학부모 로그인</h1>
+  <form id="login-form" novalidate>
+    <label class="label" for="email">이메일</label>
+    <input class="input" id="email" type="email" placeholder="example@email.com">
+    <label class="label" for="password">비밀번호</label>
+    <input class="input" id="password" type="password" placeholder="비밀번호 입력">
+    <p class="error" id="login-error"></p>
+    <button class="btn" id="login-btn" type="submit">로그인</button>
+  </form>
+  <a class="link" href="#">비밀번호를 잊으셨나요?</a>
+</main>
+<script>
+  document.getElementById('login-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = document.getElementById('email').value.trim();
+    var pw = document.getElementById('password').value;
+    if (email === 'parent@test.com' && pw === '1234') {
+      location.href = 'courses.html';
+    } else {
+    }
+  });
+</script>
+</body>
+</html>

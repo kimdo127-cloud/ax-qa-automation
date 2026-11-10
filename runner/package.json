@@ -1,0 +1,7 @@
+{
+  "name": "qa-runner",
+  "private": true,
+  "description": "구글 시트의 테스트케이스를 실제 브라우저에서 실행하는 QA 실행기",
+  "scripts": { "start": "node run.js" },
+  "dependencies": { "playwright": "1.49.1" }
+}

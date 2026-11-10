@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한빛수학 · 신청 완료</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app center">
+  <div class="done-icon">✓</div>
+  <h1 class="page-title">신청이 완료되었습니다</h1>
+  <p class="desc" id="done-name"></p>
+  <a class="btn" id="go-history" href="history.html">신청 내역 보기</a>
+</main>
+<script>
+  var name = new URLSearchParams(location.search).get('name') || '';
+  document.getElementById('done-name').textContent = name + ' 수강 신청이 접수되었습니다.';
+</script>
+</body>
+</html>

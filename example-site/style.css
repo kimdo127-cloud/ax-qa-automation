@@ -1,0 +1,39 @@
+:root {
+  --blue: #3182F6;
+  --blue-dark: #1B64DA;
+  --red: #F04452;
+  --grey-900: #191F28;
+  --grey-700: #4E5968;
+  --grey-500: #8B95A1;
+  --grey-200: #E5E8EB;
+  --grey-100: #F2F4F6;
+  --white: #FFFFFF;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
+  background: var(--grey-100);
+  color: var(--grey-900);
+}
+.app { max-width: 390px; min-height: 100vh; margin: 0 auto; background: var(--white); padding: 24px 20px 40px; }
+.logo { font-size: 15px; font-weight: 700; color: var(--blue); margin-top: 24px; }
+.title { font-size: 24px; font-weight: 700; margin: 8px 0 32px; }
+.label { display: block; font-size: 13px; color: var(--grey-700); margin: 16px 0 6px; }
+.input { width: 100%; height: 48px; border: 1px solid var(--grey-200); border-radius: 12px; padding: 0 14px; font-size: 16px; }
+.error { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 18px; }
+.btn { display: block; width: 100%; height: 52px; border: 0; border-radius: 14px; background: var(--blue); color: var(--white); font-size: 16px; font-weight: 600; cursor: pointer; text-align: center; line-height: 52px; text-decoration: none; }
+.btn:disabled { background: var(--grey-200); color: var(--grey-500); cursor: default; }
+.btn-sm { width: auto; height: 40px; line-height: 40px; padding: 0 16px; font-size: 14px; border-radius: 10px; }
+.link { display: block; text-align: center; margin-top: 16px; font-size: 13px; color: var(--grey-500); text-decoration: none; }
+.page-title { font-size: 20px; font-weight: 700; margin: 8px 0 16px; }
+.tabs { display: flex; border-bottom: 1px solid var(--grey-200); margin-bottom: 16px; }
+.tab { flex: 1; text-align: center; padding: 12px 0; font-size: 15px; color: var(--grey-500); text-decoration: none; }
+.tab.active { color: var(--grey-900); font-weight: 700; border-bottom: 2px solid var(--grey-900); }
+.card { border: 1px solid var(--grey-200); border-radius: 16px; padding: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.card-name { font-size: 16px; font-weight: 600; }
+.card-meta { font-size: 13px; color: var(--grey-700); margin-top: 4px; }
+.done-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--blue); color: var(--white); font-size: 32px; line-height: 64px; text-align: center; margin: 80px auto 24px; }
+.center { text-align: center; }
+.desc { font-size: 15px; color: var(--grey-700); margin: 8px 0 40px; }
+.apply-btn { background: #F04452; }
+.empty { text-align: center; color: var(--grey-500); font-size: 14px; padding: 40px 0; }

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한빛수학 · 수강 신청</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+  <h1 class="page-title" id="page-title">수강 산청</h1>
+  <nav class="tabs">
+    <a class="tab active" href="courses.html">수강 신청</a>
+    <a class="tab" id="tab-history" href="histroy.html">신청 내역</a>
+  </nav>
+  <div class="card">
+    <div><p class="card-name">중2 내신 대비반</p><p class="card-meta">화·목 19:00 · 월 32만원</p></div>
+    <button class="btn btn-sm apply-btn" data-name="중2 내신 대비반">신청하기</button>
+  </div>
+  <div class="card">
+    <div><p class="card-name">중3 심화반</p><p class="card-meta">월·수 18:00 · 월 35만원</p></div>
+    <button class="btn btn-sm apply-btn" data-name="중3 심화반">신청하기</button>
+  </div>
+  <div class="card">
+    <div><p class="card-name">고1 선행반</p><p class="card-meta">토 10:00 · 월 30만원</p></div>
+    <button class="btn btn-sm" disabled>마감</button>
+  </div>
+</main>
+<script>
+  document.querySelectorAll('.apply-btn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var list = JSON.parse(localStorage.getItem('applied') || '[]');
+      list.push(b.dataset.name);
+      localStorage.setItem('applied', JSON.stringify(list));
+      location.href = 'done.html?name=' + encodeURIComponent(b.dataset.name);
+    });
+  });
+</script>
+</body>
+</html>

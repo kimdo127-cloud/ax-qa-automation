@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  body { font-family: -apple-system, "Apple SD Gothic Neo", Arial, sans-serif; font-size: 13px; color: #191F28; margin: 0; padding: 14px; }
+  h3 { font-size: 14px; margin: 18px 0 8px; }
+  h3:first-child { margin-top: 0; }
+  label { display: block; color: #4E5968; margin: 10px 0 4px; }
+  input, textarea { width: 100%; box-sizing: border-box; border: 1px solid #D1D6DB; border-radius: 8px; padding: 8px; font-size: 13px; font-family: inherit; }
+  textarea { height: 110px; resize: vertical; }
+  button { width: 100%; margin-top: 12px; height: 38px; border: 0; border-radius: 8px; background: #3182F6; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  button.sub { background: #F2F4F6; color: #333D4B; }
+  button:disabled { background: #D1D6DB; cursor: default; }
+  .status { margin-top: 10px; padding: 10px; border-radius: 8px; background: #F2F4F6; line-height: 1.6; white-space: pre-line; }
+  .warn { background: #FFF3E0; }
+  .ok { background: #E8F5E9; }
+  .err { background: #FDECEA; }
+  .keys span { display: inline-block; margin-right: 8px; }
+  .hint { color: #8B95A1; font-size: 12px; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <h3>설정 상태</h3>
+  <div class="status keys" id="keys">확인 중…</div>
+  <button class="sub" onclick="google.script.run.showSettings()">설정 (키 입력)</button>
+
+  <h3>① IA · 테스트케이스 만들기</h3>
+  <label>피그마 링크 (디자인 기준)</label>
+  <input id="figmaUrl" placeholder="https://www.figma.com/design/...">
+  <label>테스트 대상 URL (HTML 시작 화면)</label>
+  <input id="targetUrl" placeholder="https://.../index.html">
+  <label>기획 메모 (화면 동작 · 예외 · 테스트 계정)</label>
+  <textarea id="memo" placeholder="예) 테스트 계정 parent@test.com / 1234&#10;로그인 성공 → 수강 신청 화면&#10;비밀번호가 틀리면 오류 문구 표시"></textarea>
+  <button id="genBtn" onclick="gen()">IA · 시나리오 · 테스트케이스 만들기</button>
+  <div class="hint">Gemini가 피그마와 기획 메모를 기준으로 작성합니다. 30초~1분 걸립니다.</div>
+
+  <h3>② QA 실행</h3>
+  <button id="runBtn" onclick="run()">QA 실행 (다음 차수)</button>
+  <div class="hint">GitHub Actions의 실제 브라우저가 테스트케이스대로 화면을 눌러 봅니다. 1~3분 걸립니다.<br>개발자가 결함 시트에 '수정완료'를 표기한 건은 다음 차수에서 다시 확인해 통과면 종료, 아니면 재오픈합니다.</div>
+  <div class="status" id="msg" style="display:none"></div>
+
+<script>
+  function show(text, cls) {
+    var m = document.getElementById('msg');
+    m.style.display = 'block';
+    m.className = 'status ' + (cls || '');
+    m.textContent = text;
+  }
+  function loadKeys() {
+    google.script.run.withSuccessHandler(function (s) {
+      document.getElementById('keys').innerHTML =
+        '<span>' + (s.gemini ? '✅' : '⬜') + ' Gemini</span>' +
+        '<span>' + (s.github ? '✅' : '⬜') + ' GitHub</span>' +
+        '<span>' + (s.figma ? '✅' : '⬜') + ' 피그마</span>' +
+        '<span>' + (s.webappUrl ? '✅' : '⬜') + ' 웹앱 주소</span>';
+    }).getSettingsStatus();
+  }
+  function gen() {
+    var b = document.getElementById('genBtn');
+    b.disabled = true;
+    show('작성 중… (피그마 읽기 → HTML 확인 → Gemini 작성)');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        b.disabled = false;
+        show('완료: IA ' + r.ia + '행 · 시나리오 ' + r.scenarios + '개 · 테스트케이스 ' + r.testcases + '개\nIA · 테스트 시나리오 · 테스트케이스 시트를 확인하세요.', 'ok');
+      })
+      .withFailureHandler(function (e) { b.disabled = false; show('오류: ' + e.message, 'err'); })
+      .generateTestDesign({
+        figmaUrl: document.getElementById('figmaUrl').value,
+        targetUrl: document.getElementById('targetUrl').value,
+        memo: document.getElementById('memo').value
+      });
+  }
+  var timer = null, started = 0;
+  function run() {
+    var b = document.getElementById('runBtn');
+    b.disabled = true;
+    show('GitHub Actions에 실행 요청 중…');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        started = Date.now();
+        show(r.round + '차 QA 실행 중… 실제 브라우저가 화면을 눌러 보고 있습니다.');
+        timer = setInterval(function () { poll(r.runId); }, 6000);
+      })
+      .withFailureHandler(function (e) { b.disabled = false; show('오류: ' + e.message, 'err'); })
+      .startQaRun();
+  }
+  function poll(runId) {
+    google.script.run.withSuccessHandler(function (s) {
+      var sec = Math.round((Date.now() - started) / 1000);
+      if (s.status === '완료') {
+        clearInterval(timer);
+        document.getElementById('runBtn').disabled = false;
+        show(s.round + ' QA 완료\n전체 ' + s.total + ' · 통과 ' + s.pass + ' · 실패 ' + s.fail +
+          '\n새 결함 ' + s.newDefects + ' · 재확인 통과 ' + s.verified + ' · 재오픈 ' + s.reopened +
+          '\n결함 · 테스트케이스 · IA · 요약 시트를 확인하세요.', s.fail ? 'warn' : 'ok');
+      } else if (String(s.status).indexOf('오류') === 0 || String(s.status).indexOf('시작 실패') === 0) {
+        clearInterval(timer);
+        document.getElementById('runBtn').disabled = false;
+        show(s.status, 'err');
+      } else {
+        show(s.round + ' QA 실행 중… (' + sec + '초)' + (sec > 300 ? '\n5분이 넘었습니다. GitHub Actions 화면에서 상태를 확인하세요.' : ''));
+      }
+    }).getRunStatus(runId);
+  }
+  loadKeys();
+</script>
+</body>
+</html>
