@@ -35,6 +35,8 @@ var OPEN_STATUS = { '열림': 1, '재오픈': 1, '확인 필요': 1 };   // 아�
 var RUN_TIMEOUT_MIN = 15;       // 이 시간 동안 결과가 안 오면 실행 실패로 처리
 var GEN_TIME_LIMIT_MS = 270000; // Apps Script 6분 제한 전에 멈추기
 var DEFAULT_REPO = 'kimdo127-cloud/ax-qa-automation';
+// 시연용 예제 피그마(4회차_QA자동화_디자인)는 미리 읽어 둔 내용을 쓴다 (피그마 읽기 한도 회피)
+var EXAMPLE_FIGMA = { key: 'tDCEsd7ZqCDYvOAV0fyC2M', text: "[화면] 로그인\n  TEXT \"한빛수학\" size 15 weight 700 color #3182F6\n  TEXT \"학부모 로그인\" size 24 weight 700 color #191F28\n  TEXT \"이메일\" size 13 weight 400 color #4E5968\n  FRAME \"이메일 입력칸\" fill #FFFFFF\n    TEXT \"example@email.com\" size 16 weight 400 color #8B95A1\n  TEXT \"비밀번호\" size 13 weight 400 color #4E5968\n  FRAME \"비밀번호 입력칸\" fill #FFFFFF\n    TEXT \"비밀번호 입력\" size 16 weight 400 color #8B95A1\n  TEXT \"이메일 또는 비밀번호가 맞지 않습니다.\" size 13 weight 400 color #F04452\n  FRAME \"로그인 버튼\" fill #3182F6\n    TEXT \"로그인\" size 16 weight 700 color #FFFFFF\n  TEXT \"비밀번호를 잊으셨나요?\" size 13 weight 400 color #8B95A1\n[화면] 수강 신청\n  TEXT \"수강 신청\" size 20 weight 700 color #191F28\n  FRAME \"탭\"\n    FRAME \"수강 신청 탭\"\n      TEXT \"수강 신청\" size 15 weight 700 color #191F28\n    FRAME \"신청 내역 탭\"\n      TEXT \"신청 내역\" size 15 weight 400 color #8B95A1\n  FRAME \"중2 내신 대비반 카드\" fill #FFFFFF\n    FRAME \"수업 정보\"\n      TEXT \"중2 내신 대비반\" size 16 weight 700 color #191F28\n      TEXT \"화·목 19:00 · 월 32만원\" size 13 weight 400 color #4E5968\n    FRAME \"신청하기 버튼\" fill #3182F6\n      TEXT \"신청하기\" size 14 weight 700 color #FFFFFF\n  FRAME \"중3 심화반 카드\" fill #FFFFFF\n    FRAME \"수업 정보\"\n      TEXT \"중3 심화반\" size 16 weight 700 color #191F28\n      TEXT \"월·수 18:00 · 월 35만원\" size 13 weight 400 color #4E5968\n    FRAME \"신청하기 버튼\" fill #3182F6\n      TEXT \"신청하기\" size 14 weight 700 color #FFFFFF\n  FRAME \"고1 선행반 카드\" fill #FFFFFF\n    FRAME \"수업 정보\"\n      TEXT \"고1 선행반\" size 16 weight 700 color #191F28\n      TEXT \"토 10:00 · 월 30만원\" size 13 weight 400 color #4E5968\n    FRAME \"마감 버튼\" fill #E5E8EB\n      TEXT \"마감\" size 14 weight 700 color #8B95A1\n[화면] 신청 완료\n  FRAME \"완료 아이콘\" fill #3182F6\n    TEXT \"✓\" size 32 weight 700 color #FFFFFF\n  TEXT \"신청이 완료되었습니다\" size 20 weight 700 color #191F28\n  TEXT \"중2 내신 대비반 수강 신청이 접수되었습니다.\" size 15 weight 400 color #4E5968\n  FRAME \"신청 내역 보기 버튼\" fill #3182F6\n    TEXT \"신청 내역 보기\" size 16 weight 700 color #FFFFFF\n[화면] 신청 내역\n  TEXT \"신청 내역\" size 20 weight 700 color #191F28\n  FRAME \"탭\"\n    FRAME \"수강 신청 탭\"\n      TEXT \"수강 신청\" size 15 weight 400 color #8B95A1\n    FRAME \"신청 내역 탭\"\n      TEXT \"신청 내역\" size 15 weight 700 color #191F28\n  FRAME \"중2 내신 대비반 카드\" fill #FFFFFF\n    FRAME \"수업 정보\"\n      TEXT \"중2 내신 대비반\" size 16 weight 700 color #191F28\n      TEXT \"신청 접수\" size 13 weight 400 color #4E5968" };
 var TAB_ORDER = ['요약', '결함', '테스트케이스', '히스토리', 'IA', '테스트 시나리오'];
 
 /* ───────────── 메뉴 · 화면 ───────────── */
@@ -542,10 +544,11 @@ function writeRows_(name, rows) {
 }
 
 function readFigma_(url) {
-  var token = props_().getProperty('FIGMA_TOKEN');
-  if (!token) throw new Error('설정에서 피그마 토큰을 먼저 입력하세요. (피그마 없이 하려면 피그마 링크 칸을 비우세요)');
   var m = url.match(/figma\.com\/(?:design|file|proto)\/([A-Za-z0-9]+)/);
   if (!m) throw new Error('피그마 링크 형식이 아닙니다. figma.com/design/... 주소를 넣어 주세요.');
+  if (m[1] === EXAMPLE_FIGMA.key) return EXAMPLE_FIGMA.text;
+  var token = props_().getProperty('FIGMA_TOKEN');
+  if (!token) throw new Error('설정에서 피그마 토큰을 먼저 입력하세요. (피그마 없이 하려면 피그마 링크 칸을 비우세요)');
   // 피그마는 읽기 한도가 낮아서, 같은 파일은 저장해 둔 내용을 다시 쓴다 (6시간)
   var cache = loadFigmaCache_(m[1]);
   if (cache && Date.now() - cache.at < 6 * 3600000) return cache.text;
