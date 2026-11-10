@@ -671,7 +671,7 @@ function rebuildSummary_() {
 
   sh.getRange('A1').setValue('QA 현황').setFontSize(16).setFontWeight('bold');
   sh.getRange('A2').setValue(last ? '최근 ' + last[0] + ' QA · ' + (last[3] instanceof Date ? Utilities.formatDate(last[3], 'Asia/Seoul', 'M월 d일 HH:mm') : last[3]) : '아직 QA를 실행하지 않았습니다. 메뉴 QA 자동화 → ▶ QA 시작').setFontColor('#8B95A1');
-  var kpi = [['열린 결함', open, '#FFF5F5', '#C2410C'], ['재오픈', reopen, '#FFF3E0', '#C2410C'], ['종료', closed, '#E8F5E9', '#1B7F3B'],
+  var kpi = [['미해결 결함', open + reopen, '#FFF5F5', '#C2410C'], ['그중 재오픈', reopen, '#FFF3E0', '#C2410C'], ['종료', closed, '#E8F5E9', '#1B7F3B'],
              ['최근 통과', last ? last[6] + ' / ' + last[5] : '-', '#F2F4F6', '#191F28']];
   kpi.forEach(function (k, i) {
     var col = 1 + i * 2;
@@ -683,7 +683,7 @@ function rebuildSummary_() {
   var screens = {};
   iaRows.forEach(function (r) { var s = screens[r[1]] = screens[r[1]] || { ia: 0, open: 0, closed: 0 }; s.ia++; });
   dRows.forEach(function (r) { if (!r[0]) return; var s = screens[r[4]] = screens[r[4]] || { ia: 0, open: 0, closed: 0 }; if (r[14] === '종료') s.closed++; else s.open++; });
-  var t1 = [['화면별', '확인 항목', '열린 결함', '종료']];
+  var t1 = [['화면별', '확인 항목', '미해결 결함', '종료']];
   Object.keys(screens).forEach(function (k) { if (k) t1.push([k, screens[k].ia, screens[k].open, screens[k].closed]); });
   sh.getRange(7, 1, t1.length, 4).setValues(t1);
   sh.getRange(7, 1, 1, 4).setFontWeight('bold').setBackground('#F2F4F6');
