@@ -35,4 +35,5 @@ body {
 .done-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--blue); color: var(--white); font-size: 32px; line-height: 64px; text-align: center; margin: 80px auto 24px; }
 .center { text-align: center; }
 .desc { font-size: 15px; color: var(--grey-700); margin: 8px 0 40px; }
+.apply-btn { background: #F04452; }
 .empty { text-align: center; color: var(--grey-500); font-size: 14px; padding: 40px 0; }
