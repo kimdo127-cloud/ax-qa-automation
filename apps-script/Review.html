@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  :root { --blue: #3182F6; --blue-bg: #E8F3FF; --g900: #191F28; --g700: #4E5968; --g500: #8B95A1; --g300: #D1D6DB; --g200: #E5E8EB; --g100: #F2F4F6; --g50: #F9FAFB;
+          --red-bg: #FFEEEE; --amber: #B45309; --amber-bg: #FFF6E5; --green: #1B7F3B; --green-bg: #E8F5E9; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: -apple-system, "Apple SD Gothic Neo", "Pretendard", Arial, sans-serif; font-size: 13px; color: var(--g900); display: flex; flex-direction: column; }
+  .top { display: flex; align-items: center; gap: 8px; padding: 0 2px 12px; }
+  .tab { padding: 7px 12px; border-radius: 10px; font-weight: 600; color: var(--g500); cursor: pointer; background: var(--g100); }
+  .tab.on { background: var(--g900); color: #fff; }
+  .search { margin-left: auto; width: 220px; height: 34px; border: 1px solid var(--g300); border-radius: 10px; padding: 0 10px; font-size: 13px; }
+  .main { flex: 1; display: flex; gap: 14px; min-height: 0; }
+  .list { width: 330px; flex: none; overflow-y: auto; border: 1px solid var(--g200); border-radius: 14px; background: var(--g50); padding: 6px; }
+  .grp { font-size: 11.5px; font-weight: 700; color: var(--g500); padding: 10px 8px 4px; }
+  .row { padding: 9px 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; }
+  .row:hover { background: #fff; }
+  .row.on { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .row .id { font-size: 11px; font-weight: 700; color: var(--g500); flex: none; width: 52px; padding-top: 1px; }
+  .row .t { font-size: 12.5px; line-height: 1.4; flex: 1; }
+  .tag { font-size: 10.5px; font-weight: 700; border-radius: 6px; padding: 1px 6px; flex: none; }
+  .tag.ai { background: var(--blue-bg); color: var(--blue); } .tag.me { background: var(--g200); color: var(--g700); } .tag.done { background: var(--green-bg); color: var(--green); }
+  .detail { flex: 1; overflow-y: auto; padding: 2px 4px; }
+  .empty { color: var(--g500); text-align: center; padding: 80px 0; }
+  .d-id { font-size: 12px; color: var(--g500); font-weight: 700; }
+  .d-title { font-size: 17px; font-weight: 700; margin: 4px 0 12px; line-height: 1.4; }
+  .seg { display: inline-flex; background: var(--g100); border-radius: 10px; padding: 3px; margin-bottom: 14px; }
+  .seg span { padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--g500); border-radius: 8px; cursor: pointer; }
+  .seg span.on { background: #fff; color: var(--g900); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+  .hint { font-size: 12px; color: var(--g500); margin: -6px 0 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .box { background: var(--g50); border-radius: 12px; padding: 12px; }
+  .box b { display: block; font-size: 11.5px; color: var(--g500); margin-bottom: 4px; }
+  .box div { white-space: pre-line; line-height: 1.55; font-size: 12.5px; }
+  .full { grid-column: 1 / -1; }
+  .shot { width: 100%; max-height: 260px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid var(--g200); }
+  .links { display: flex; gap: 14px; margin: 14px 0; }
+  .links a, .links span { color: var(--blue); font-weight: 600; text-decoration: none; cursor: pointer; font-size: 12.5px; }
+  .acts { display: flex; gap: 8px; position: sticky; bottom: 0; background: #fff; padding: 10px 0 2px; }
+  .acts button { flex: 1; height: 42px; border: 0; border-radius: 10px; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+  .g { background: var(--green-bg); color: var(--green); } .r { background: var(--red-bg); color: #B42318; } .n { background: var(--g100); color: var(--g700); }
+  .msg { font-size: 12px; color: #B42318; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <span class="tab" data-k="fixed">재확인 대기 <b id="cf">0</b></span>
+    <span class="tab" data-k="check">기획자 확인 필요 <b id="cc">0</b></span>
+    <input class="search" id="q" placeholder="이슈 번호·화면·내용 검색">
+  </div>
+  <div class="main">
+    <div class="list" id="list"></div>
+    <div class="detail" id="detail"><div class="empty">왼쪽에서 이슈를 고르세요</div></div>
+  </div>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var data = { fixed: [], check: [] }, kind = 'fixed', sel = null, doneIds = {};
+
+  google.script.run.withSuccessHandler(function (d) { data = d.list; kind = d.kind; drawTabs(); drawList(); }).getReviewDialogData();
+
+  function items() { return data[kind] || []; }
+  function drawTabs() {
+    var left = function (l) { return l.filter(function (x) { return !doneIds[x.id]; }).length; };
+    $('cf').textContent = left(data.fixed); $('cc').textContent = left(data.check);
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) { t.className = 'tab' + (t.dataset.k === kind ? ' on' : ''); });
+  }
+  function drawList() {
+    var q = $('q').value.trim().toLowerCase();
+    var list = items().filter(function (d) { return !q || (d.id + d.screen + d.title).toLowerCase().indexOf(q) > -1; });
+    if (!list.length) { $('list').innerHTML = '<div class="empty">' + (q ? '검색 결과가 없습니다' : '처리할 이슈가 없습니다') + '</div>'; return; }
+    var groups = {};
+    list.forEach(function (d) { (groups[d.screen || '기타'] = groups[d.screen || '기타'] || []).push(d); });
+    $('list').innerHTML = Object.keys(groups).map(function (g) {
+      return '<div class="grp">' + esc(g) + ' · ' + groups[g].length + '</div>' + groups[g].map(function (d) {
+        var tag = doneIds[d.id] ? '<span class="tag done">처리됨</span>' : kind === 'fixed' ? (d.method === '직접' ? '<span class="tag me">직접</span>' : '<span class="tag ai">AI</span>') : '';
+        return '<div class="row' + (sel === d.id ? ' on' : '') + '" data-id="' + esc(d.id) + '"><span class="id">' + esc(d.id) + '</span><span class="t">' + esc(d.title) + '</span>' + tag + '</div>';
+      }).join('');
+    }).join('');
+  }
+  function drawDetail() {
+    var d = items().filter(function (x) { return x.id === sel; })[0];
+    if (!d) { $('detail').innerHTML = '<div class="empty">왼쪽에서 이슈를 고르세요</div>'; return; }
+    var manual = kind === 'check' || d.method === '직접';
+    var h = '<div class="d-id">' + esc(d.id) + ' · ' + esc(d.screen) + ' · ' + esc(d.status) + '</div><div class="d-title">' + esc(d.title) + '</div>';
+    if (kind === 'fixed') {
+      h += '<div class="seg"><span class="' + (manual ? '' : 'on') + '" data-m="AI">AI가 확인</span><span class="' + (manual ? 'on' : '') + '" data-m="직접">직접 확인</span></div>';
+      h += '<div class="hint">' + (manual ? '화면을 열어 확인한 뒤 아래에서 결과를 고르세요.' : '오른쪽 패널의 "AI로 재확인"을 누르면 AI가 다시 눌러 보고 종료 또는 재오픈합니다.') + '</div>';
+    }
+    h += '<div class="grid"><div class="box"><b>재현 절차</b><div>' + esc(d.steps) + '</div></div><div class="box"><b>기대 결과</b><div>' + esc(d.expected) + '</div></div>' +
+         '<div class="box full"><b>지난 실제 결과</b><div>' + esc(d.actual) + '</div></div>' +
+         (d.shot ? '<div class="box full"><b>실패 화면</b><img class="shot" id="shot" alt="불러오는 중…"></div>' : '') + '</div>';
+    h += '<div class="links"><a href="' + esc(d.page) + '" target="_blank">화면 열기 ↗</a><span data-sheet="1">시트에서 보기</span></div>';
+    if (manual) {
+      h += '<div class="acts">' + (kind === 'fixed'
+        ? '<button class="g" data-v="통과">고쳐짐 · 종료</button><button class="r" data-v="재오픈">안 고쳐짐 · 재오픈</button>'
+        : '<button class="r" data-v="이슈 맞음">실제 이슈</button><button class="n" data-v="제외">테스트 오류 · 제외</button>') + '</div><div class="msg" id="msg"></div>';
+    }
+    $('detail').innerHTML = h;
+    if (d.shot) google.script.run.withSuccessHandler(function (src) { var i = $('shot'); if (i) { if (src) i.src = src; else i.alt = '이미지를 불러오지 못했습니다'; } }).getShotData(d.shot);
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-k],[data-id],[data-m],[data-v],[data-sheet]');
+    if (!t) return;
+    if (t.dataset.k) { kind = t.dataset.k; sel = null; drawTabs(); drawList(); drawDetail(); }
+    else if (t.dataset.id) { sel = t.dataset.id; drawList(); drawDetail(); }
+    else if (t.dataset.m) {
+      items().forEach(function (x) { if (x.id === sel) x.method = t.dataset.m; });
+      google.script.run.setCheckMethod(sel, t.dataset.m); drawList(); drawDetail();
+    } else if (t.dataset.v) {
+      t.disabled = true;
+      google.script.run.withSuccessHandler(function (r) {
+        doneIds[sel] = 1;
+        var keep = items().filter(function (x) { return x.id === sel; })[0];
+        data = r; if (keep && !data[kind].some(function (x) { return x.id === sel; })) data[kind].push(Object.assign(keep, { status: t.dataset.v === '통과' ? '종료' : t.dataset.v }));
+        drawTabs(); drawList();
+        // 다음 미처리 건으로 넘어간다
+        var nx = items().filter(function (x) { return !doneIds[x.id]; })[0];
+        sel = nx ? nx.id : null; drawList(); drawDetail();
+      }).withFailureHandler(function (err) { t.disabled = false; $('msg').textContent = err.message; }).manualVerdict(sel, t.dataset.v);
+    } else if (t.dataset.sheet) {
+      google.script.run.withSuccessHandler(function () { google.script.host.close(); }).openDefectRow(sel);
+    }
+  });
+  $('q').addEventListener('input', drawList);
+</script>
+</body>
+</html>

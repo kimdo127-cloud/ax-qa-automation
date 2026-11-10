@@ -74,7 +74,7 @@ function openDefectRow(defectId) {
   var d = ss.getSheetByName(SHEETS.DEFECT);
   var row = findDefectRow_(defectId);
   ss.setActiveSheet(d);
-  if (row) d.setActiveRange(d.getRange(row, 1, 1, DCOLS));
+  if (row) d.setActiveRange(d.getRange(row, 1));
 }
 
 function showSettings() {
@@ -101,6 +101,8 @@ function setupSheets() {
   var names = ss.getSheets().map(function (s) { return s.getName(); });
   var ok = TAB_ORDER.every(function (n, i) { return names[i] === n; });
   if (created || !ok) arrangeSheets_(ss);
+  var dsh = ss.getSheetByName(SHEETS.DEFECT);
+  if (dsh.getConditionalFormatRules().length < 5) applyIssueFormatting_(dsh);
   return true;
 }
 
@@ -151,6 +153,8 @@ function arrangeSheets_(ss) {
   var d = ss.getSheetByName(SHEETS.DEFECT);
   [70, 50, 70, 90, 80, 200, 200, 180, 200, 130, 70, 50, 90, 160, 80, 260, 70].forEach(function (w, i) { d.setColumnWidth(i + 1, w); });
   d.getRange('A:Q').setWrap(true).setVerticalAlignment('top');
+  d.getRange(2, 1, 999, DCOLS).setBackground(null);
+  applyIssueFormatting_(d);
   d.getRange(2, 13, 999, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['수정중', '수정완료'], true).setAllowInvalid(false).build());
   d.getRange(2, 15, 999, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(DEFECT_STATUS, true).setAllowInvalid(false).build());
   d.getRange(2, 17, 999, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['AI', '직접'], true).setAllowInvalid(false).build());
@@ -270,8 +274,74 @@ function getPanelState() {
     runningRound: running && last ? last[0] : '',
     nextRound: done.length + 1,
     testcases: tcRows_().filter(function (r) { return r.id; }).length,
-    review: getReviewList_()
+    review: reviewCounts_(),
+    last: lastRunInfo_(runRows)
   };
+}
+
+function reviewCounts_() {
+  var r = getReviewList_();
+  var d = ss_().getSheetByName(SHEETS.DEFECT);
+  var rows = d.getLastRow() > 1 ? d.getRange(2, 15, d.getLastRow() - 1, 1).getValues() : [];
+  var cnt = function (st) { return rows.filter(function (x) { return x[0] === st; }).length; };
+  return {
+    fixed: r.fixed.length,
+    fixedAi: r.fixed.filter(function (x) { return x.method !== '직접'; }).length,
+    fixedManual: r.fixed.filter(function (x) { return x.method === '직접'; }).length,
+    check: r.check.length,
+    open: cnt('열림') + cnt('재오픈') + cnt('확인 필요'),
+    reopened: cnt('재오픈'),
+    closed: cnt('종료')
+  };
+}
+
+function lastRunInfo_(runRows) {
+  var done = runRows.filter(function (r) { return String(r[11]).indexOf('완료') === 0; });
+  if (!done.length) return null;
+  var r = done[done.length - 1];
+  var t = r[3] instanceof Date ? Utilities.formatDate(r[3], 'Asia/Seoul', 'M월 d일 HH:mm') : String(r[3]);
+  return { label: r[0], at: t, total: r[5], pass: r[6], fail: r[7] };
+}
+
+// 전체 보기 팝업
+function showReviewDialog(kind) {
+  props_().setProperty('REVIEW_KIND', kind || 'fixed');
+  var html = HtmlService.createHtmlOutputFromFile('Review').setWidth(980).setHeight(640);
+  SpreadsheetApp.getUi().showModalDialog(html, kind === 'check' ? '기획자 확인 필요' : '재확인 대기');
+}
+
+function getReviewDialogData() {
+  return { kind: props_().getProperty('REVIEW_KIND') || 'fixed', list: getReviewList_() };
+}
+
+// 실패 화면 캡처를 팝업에 보여 주기 위해 이미지 데이터로 돌려준다
+function getShotData(url) {
+  var m = String(url || '').match(/[-\w]{25,}/);
+  if (!m) return '';
+  try {
+    var b = DriveApp.getFileById(m[0]).getBlob();
+    return 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
+  } catch (e) { return ''; }
+}
+
+// QA 이슈 탭 색: 상태가 바뀌면 시트가 자동으로 칠한다
+function applyIssueFormatting_(d) {
+  var range = d.getRange('A2:Q1000');
+  var keep = d.getConditionalFormatRules().filter(function (r) {
+    return !r.getRanges().some(function (x) { return x.getA1Notation() === 'A2:Q1000'; });
+  });
+  var rule = function (f, bg, fc) {
+    var b = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(f).setBackground(bg).setRanges([range]);
+    if (fc) b.setFontColor(fc);
+    return b.build();
+  };
+  d.setConditionalFormatRules(keep.concat([
+    rule('=AND($M2="수정완료",OR($O2="열림",$O2="재오픈",$O2="확인 필요"))', '#E8F3FF'),
+    rule('=$O2="재오픈"', '#FFF3E0'),
+    rule('=$O2="확인 필요"', '#FFF8E1'),
+    rule('=$O2="종료"', '#F1F8E9'),
+    rule('=$O2="제외"', '#F2F4F6', '#8B95A1')
+  ]));
 }
 
 // 재확인 대기(개발자 수정완료) + 기획자 확인 필요
@@ -321,7 +391,6 @@ function manualVerdict(defectId, verdict) {
   if (!v) throw new Error('알 수 없는 판정');
   d.getRange(row, 13, 1, 4).setValues([[v.mark, v.result, v.status, appendLog_(r[15], now_() + ' ' + v.result)]]);
   d.getRange(row, 17).setValue('직접');
-  if (v.color) d.getRange(row, 1, 1, DCOLS).setBackground(v.color); else d.getRange(row, 1, 1, DCOLS).setBackground(null);
   log_('직접 확인', defectId, r[5], v.result, '기획자');
   rebuildSummary_();
   return getReviewList_();
@@ -962,7 +1031,6 @@ function applyResults_(runId, info, results) {
       } else if (open) {
         d.getRange(open.row, 14, 1, 3).setValues([[label + ' 재확인 통과', '종료',
           appendLog_(open.data[15], label + ': 다시 실행해 통과 확인 → 종료' + (marked ? '' : ' (개발자 표기 없이 통과)'))]]);
-        d.getRange(open.row, 1, 1, DCOLS).setBackground('#F1F8E9');
         stat.verified++;
         L('재확인', open.data[0], open.data[5], '통과 → 종료');
       }
@@ -980,12 +1048,10 @@ function applyResults_(runId, info, results) {
       } else if (check) {
         d.getRange(open.row, 14, 1, 3).setValues([[label + ' 재확인 불가 (테스트 오류 가능) · 기획자 확인', '확인 필요',
           appendLog_(open.data[15], label + ': 테스트가 요소를 찾지 못해 재확인 불가')]]);
-        d.getRange(open.row, 1, 1, DCOLS).setBackground('#FFF8E1');
         L('재확인', open.data[0], open.data[5], '재확인 불가 → 확인 필요');
       } else if (marked) {
         d.getRange(open.row, 13, 1, 4).setValues([['', label + ' 재오픈 (수정완료 표기됐지만 재현됨)', '재오픈',
           appendLog_(open.data[15], label + ': 개발자 수정완료 표기 → 다시 실행해 재현 → 재오픈')]]);
-        d.getRange(open.row, 1, 1, DCOLS).setBackground('#FFF3E0');
         stat.reopened++;
         L('재확인', open.data[0], open.data[5], '재현됨 → 재오픈');
       } else {
@@ -1002,7 +1068,6 @@ function applyResults_(runId, info, results) {
       d.appendRow([id, label, r.id, ia, screen, (check ? '[테스트 확인 필요] ' : '') + t.data[2], t.data[5], t.data[6], r.actual, '', '', sev, '',
         check ? '테스트 오류 가능 · 기획자 확인' : '', check ? '확인 필요' : '열림', label + ': 발견 (' + now_() + ')', 'AI']);
       var row = d.getLastRow();
-      if (check) d.getRange(row, 1, 1, DCOLS).setBackground('#FFF8E1');
       if (shot) setShot_(d, row, shot);
       cell.setValue((check ? '확인 필요 → ' : '실패 → ') + id).setBackground(check ? '#FFF8E1' : '#FDECEA');
       stat.newDefects++;

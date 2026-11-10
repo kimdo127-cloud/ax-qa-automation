@@ -4,55 +4,56 @@
 <base target="_top">
 <style>
   :root { --blue: #3182F6; --blue-bg: #E8F3FF; --g900: #191F28; --g700: #4E5968; --g500: #8B95A1; --g300: #D1D6DB; --g200: #E5E8EB; --g100: #F2F4F6; --g50: #F9FAFB;
-          --red: #F04452; --red-bg: #FFEEEE; --amber: #D97706; --amber-bg: #FFF6E5; --green: #1B7F3B; --green-bg: #E8F5E9; }
+          --red-bg: #FFEEEE; --amber: #B45309; --amber-bg: #FFF6E5; --orange-bg: #FFF3E0; --green: #1B7F3B; --green-bg: #E8F5E9; }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body { font-family: -apple-system, "Apple SD Gothic Neo", "Pretendard", Arial, sans-serif; font-size: 13px; color: var(--g900); background: var(--g50); display: flex; flex-direction: column; }
-  .scroll { flex: 1; overflow-y: auto; padding: 14px 14px 8px; }
+  .scroll { flex: 1; overflow-y: auto; padding: 16px 14px 10px; }
   .foot { flex: none; background: #fff; border-top: 1px solid var(--g200); padding: 12px 14px 14px; box-shadow: 0 -4px 12px rgba(0,0,0,.04); }
+  .card { background: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .label { font-size: 12px; color: var(--g500); font-weight: 600; }
 
-  /* 진행 상황 */
-  .prog { background: #fff; border-radius: 14px; padding: 14px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); display: none; }
-  .prog-h { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 14px; }
-  .prog-h small { font-weight: 500; color: var(--g500); font-size: 12px; }
-  .bar { height: 4px; background: var(--g100); border-radius: 2px; margin: 10px 0 12px; overflow: hidden; }
-  .bar i { display: block; height: 100%; width: 0; background: var(--blue); border-radius: 2px; transition: width .4s; }
+  /* 최근 실행 · 진행 상황 */
+  .hero-top { display: flex; justify-content: space-between; align-items: baseline; }
+  .hero-title { font-size: 15px; font-weight: 700; margin-top: 2px; }
+  .hero-time { font-size: 11.5px; color: var(--g500); }
+  .ratio { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--g100); margin: 12px 0 8px; }
+  .ratio i { display: block; height: 100%; transition: width .4s; }
+  .legend-row { display: flex; gap: 12px; font-size: 12px; color: var(--g700); }
+  .legend-row b { font-weight: 700; }
+  .dotc { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .stat { background: var(--g50); border-radius: 10px; padding: 8px 10px; }
+  .stat b { display: block; font-size: 17px; margin-top: 2px; }
   .step { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--g500); font-size: 12.5px; }
   .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--g300); flex: none; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; }
   .step.now { color: var(--g900); font-weight: 600; } .step.now .dot { border-color: var(--blue); background: var(--blue-bg); animation: pulse 1.2s infinite; }
   .step.ok { color: var(--g700); } .step.ok .dot { border-color: var(--green); background: var(--green); }
   @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(49,130,246,.15); } }
-  .note { margin-top: 8px; font-size: 12px; color: var(--g700); background: var(--g50); border-radius: 8px; padding: 8px 10px; white-space: pre-line; }
-  .prog.err .note { background: var(--red-bg); color: #B42318; }
-  .prog.ok .note { background: var(--green-bg); color: var(--green); }
+  .note { margin-top: 10px; font-size: 12px; color: var(--g700); background: var(--g50); border-radius: 8px; padding: 8px 10px; white-space: pre-line; }
+  .err .note { background: var(--red-bg); color: #B42318; }
+  .bar { height: 4px; background: var(--g100); border-radius: 2px; margin: 10px 0 10px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--blue); transition: width .4s; }
 
-  /* 목록 */
-  .sec { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; margin: 4px 2px 4px; }
-  .pill { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; }
-  .pill.blue { background: var(--blue-bg); color: var(--blue); } .pill.amber { background: var(--amber-bg); color: var(--amber); }
-  .sub { color: var(--g500); font-size: 12px; margin: 0 2px 10px; line-height: 1.5; }
-  .empty { background: #fff; border: 1px dashed var(--g300); border-radius: 12px; padding: 14px; text-align: center; color: var(--g500); font-size: 12px; margin-bottom: 18px; }
-  .item { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
-  .item-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
-  .id { font-size: 11px; font-weight: 700; color: var(--g500); }
-  .name { font-size: 13px; font-weight: 600; margin-top: 2px; line-height: 1.4; }
-  .scr { font-size: 11.5px; color: var(--g500); margin-top: 2px; }
-  .seg { display: flex; background: var(--g100); border-radius: 8px; padding: 2px; flex: none; }
-  .seg span { padding: 4px 8px; font-size: 11px; font-weight: 600; color: var(--g500); border-radius: 6px; cursor: pointer; white-space: nowrap; }
-  .seg span.on { background: #fff; color: var(--g900); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
-  .detail { margin-top: 10px; border-top: 1px solid var(--g100); padding-top: 10px; display: none; }
-  .kv { font-size: 12px; margin-bottom: 8px; }
-  .kv b { display: block; font-size: 11px; color: var(--g500); font-weight: 600; margin-bottom: 2px; }
-  .kv div { white-space: pre-line; line-height: 1.5; }
-  .links { display: flex; gap: 6px; margin-bottom: 8px; }
-  .links a, .links span { font-size: 12px; color: var(--blue); text-decoration: none; cursor: pointer; font-weight: 600; }
-  .acts { display: flex; gap: 6px; }
-  .acts button { flex: 1; height: 34px; border: 0; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-  .b-green { background: var(--green-bg); color: var(--green); } .b-red { background: var(--red-bg); color: #B42318; } .b-gray { background: var(--g100); color: var(--g700); }
-  .ai { width: 100%; height: 38px; border: 1px solid var(--blue); background: #fff; color: var(--blue); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; margin: 2px 0 18px; display: none; }
-  .ai:disabled { border-color: var(--g300); color: var(--g500); }
+  /* 할 일 카드 */
+  .todo-h { display: flex; justify-content: space-between; align-items: flex-start; }
+  .big { font-size: 30px; font-weight: 800; line-height: 1.1; margin-top: 4px; }
+  .big small { font-size: 14px; font-weight: 600; color: var(--g500); margin-left: 2px; }
+  .chip { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 3px 8px; }
+  .chip.blue { background: var(--blue-bg); color: var(--blue); } .chip.amber { background: var(--amber-bg); color: var(--amber); }
+  .desc { font-size: 12px; color: var(--g500); margin: 6px 0 12px; line-height: 1.5; }
+  .split { font-size: 12px; color: var(--g700); margin-bottom: 12px; }
+  .btns { display: flex; gap: 6px; }
+  .btn { flex: 1; height: 38px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: 0; }
+  .btn.ghost { background: var(--g100); color: var(--g700); }
+  .btn.solid { background: var(--blue-bg); color: var(--blue); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .zero { color: var(--g300); }
 
-  /* 하단 버튼 */
+  /* 색 안내 */
+  .guide { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-top: 8px; font-size: 12px; color: var(--g700); }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 6px; vertical-align: -2px; border: 1px solid rgba(0,0,0,.05); }
+
   .primary { width: 100%; height: 46px; border: 0; border-radius: 12px; background: var(--blue); color: #fff; font-size: 14.5px; font-weight: 700; cursor: pointer; }
   .primary:disabled { background: var(--g300); cursor: default; }
   .secondary { width: 100%; height: 36px; border: 0; background: transparent; color: var(--g700); font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 6px; border-radius: 10px; }
@@ -61,21 +62,61 @@
 </head>
 <body>
   <div class="scroll">
-    <div class="prog" id="prog">
-      <div class="prog-h"><span id="progTitle">QA 실행 중</span><small id="elapsed"></small></div>
-      <div class="bar"><i id="barFill"></i></div>
-      <div id="steps"></div>
-      <div class="note" id="note" style="display:none"></div>
+    <!-- 최근 실행 결과 / 진행 상황 -->
+    <div class="card" id="hero">
+      <div id="heroIdle">
+        <div class="hero-top"><span class="label">최근 QA</span><span class="hero-time" id="lastAt"></span></div>
+        <div class="hero-title" id="lastTitle">아직 실행 기록이 없습니다</div>
+        <div class="ratio"><i id="rPass" style="background:var(--green)"></i><i id="rFail" style="background:#F04452"></i></div>
+        <div class="legend-row"><span><span class="dotc" style="background:var(--green)"></span>통과 <b id="lPass">0</b></span><span><span class="dotc" style="background:#F04452"></span>문제 <b id="lFail">0</b></span></div>
+        <div class="stats">
+          <div class="stat"><span class="label">미해결</span><b id="sOpen">0</b></div>
+          <div class="stat"><span class="label">재오픈</span><b id="sReopen">0</b></div>
+          <div class="stat"><span class="label">종료</span><b id="sClosed">0</b></div>
+        </div>
+      </div>
+      <div id="heroRun" style="display:none">
+        <div class="hero-top"><span class="hero-title" id="progTitle">QA 실행 중</span><span class="hero-time" id="elapsed"></span></div>
+        <div class="bar"><i id="barFill"></i></div>
+        <div id="steps"></div>
+        <div class="note" id="note" style="display:none"></div>
+      </div>
     </div>
 
-    <div class="sec">재확인 대기 <span class="pill blue" id="nFixed">0</span></div>
-    <div class="sub">개발자가 '수정완료'로 표시한 이슈입니다. AI가 다시 눌러 볼지, 직접 확인할지 고르세요.</div>
-    <div id="fixed"></div>
-    <button class="ai" id="aiBtn" onclick="recheck()"></button>
+    <!-- 재확인 대기 -->
+    <div class="card">
+      <div class="todo-h">
+        <div><span class="label">재확인 대기</span><div class="big" id="nFixed">0<small>건</small></div></div>
+        <span class="chip blue">개발자 수정완료</span>
+      </div>
+      <div class="desc">개발자가 고쳤다고 표시한 이슈입니다. AI가 다시 눌러 보거나, 직접 확인할 수 있습니다.</div>
+      <div class="split" id="split"></div>
+      <div class="btns">
+        <button class="btn ghost" id="viewFixed" onclick="google.script.run.showReviewDialog('fixed')">전체 보기</button>
+        <button class="btn solid" id="aiBtn" onclick="recheck()">AI로 재확인</button>
+      </div>
+    </div>
 
-    <div class="sec">기획자 확인 필요 <span class="pill amber" id="nCheck">0</span></div>
-    <div class="sub">테스트가 화면 요소를 찾지 못한 건입니다. 직접 보고 실제 이슈인지 판정하세요.</div>
-    <div id="check"></div>
+    <!-- 기획자 확인 필요 -->
+    <div class="card">
+      <div class="todo-h">
+        <div><span class="label">기획자 확인 필요</span><div class="big" id="nCheck">0<small>건</small></div></div>
+        <span class="chip amber">판정 필요</span>
+      </div>
+      <div class="desc">테스트가 화면 요소를 찾지 못한 건입니다. 실제 이슈인지 테스트 오류인지 판정해 주세요.</div>
+      <div class="btns"><button class="btn ghost" id="viewCheck" onclick="google.script.run.showReviewDialog('check')">전체 보기</button></div>
+    </div>
+
+    <!-- 색 안내 -->
+    <div class="card">
+      <span class="label">QA 이슈 탭 색 안내</span>
+      <div class="guide">
+        <span><span class="sw" style="background:#E8F3FF"></span>재확인 대기</span>
+        <span><span class="sw" style="background:#FFF3E0"></span>재오픈</span>
+        <span><span class="sw" style="background:#FFF8E1"></span>기획자 확인 필요</span>
+        <span><span class="sw" style="background:#F1F8E9"></span>종료</span>
+      </div>
+    </div>
   </div>
 
   <div class="foot">
@@ -86,12 +127,50 @@
 <script>
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
-  var busy = false, timer = null, pt = null, t0 = 0, stepList = [], stepNow = 0, nextRound = 1, hasTests = 0;
+  var busy = false, timer = null, pt = null, t0 = 0, stepList = [], stepNow = 0, nextRound = 1, hasTests = 0, counts = {}, refreshT = null;
+
+  /* ── 상태 표시 ── */
+  function render(s) {
+    counts = s.review; nextRound = s.nextRound; hasTests = s.testcases;
+    var c = counts;
+    $('nFixed').innerHTML = c.fixed + '<small>건</small>'; $('nFixed').className = 'big' + (c.fixed ? '' : ' zero');
+    $('nCheck').innerHTML = c.check + '<small>건</small>'; $('nCheck').className = 'big' + (c.check ? '' : ' zero');
+    $('split').textContent = c.fixed ? 'AI 확인 ' + c.fixedAi + '건 · 직접 확인 ' + c.fixedManual + '건' : '';
+    $('aiBtn').textContent = c.fixedAi ? 'AI로 ' + c.fixedAi + '건 재확인' : 'AI로 재확인';
+    $('sOpen').textContent = c.open; $('sReopen').textContent = c.reopened; $('sClosed').textContent = c.closed;
+    if (s.last) {
+      $('lastTitle').textContent = s.last.label + ' 완료 · 테스트 ' + s.last.total + '건';
+      $('lastAt').textContent = s.last.at;
+      var tot = (s.last.pass || 0) + (s.last.fail || 0) || 1;
+      $('rPass').style.width = (s.last.pass / tot * 100) + '%'; $('rFail').style.width = (s.last.fail / tot * 100) + '%';
+      $('lPass').textContent = s.last.pass; $('lFail').textContent = s.last.fail;
+    }
+    $('fullBtn').textContent = hasTests ? '전체 QA 실행 · ' + nextRound + '차' : '전체 QA 실행';
+    lock();
+  }
+  function lock() {
+    $('fullBtn').disabled = busy || !hasTests;
+    $('aiBtn').disabled = busy || !counts.fixedAi;
+    $('viewFixed').disabled = !counts.fixed;
+    $('viewCheck').disabled = !counts.check;
+  }
+  function load() {
+    google.script.run.withSuccessHandler(function (s) {
+      render(s);
+      if (s.running && !timer && !busy) {
+        busy = true; lock();
+        showSteps(['화면 눌러 보기', '결과 기록'], s.runningRound + ' 실행 중');
+        timer = setInterval(function () { poll(s.running); }, 6000);
+      }
+    }).getPanelState();
+  }
+  // 팝업에서 판정하거나 시트에서 개발자가 표시하면 숫자가 바뀌므로 주기적으로 새로 읽는다
+  refreshT = setInterval(function () { if (!busy) load(); }, 10000);
 
   /* ── 진행 상황 ── */
   function showSteps(list, title) {
     stepList = list; stepNow = 0; t0 = Date.now();
-    $('prog').className = 'prog'; $('prog').style.display = 'block';
+    $('heroIdle').style.display = 'none'; $('heroRun').style.display = 'block'; $('hero').className = 'card';
     $('progTitle').textContent = title; $('note').style.display = 'none';
     drawSteps();
     clearInterval(pt);
@@ -112,16 +191,19 @@
   function next() { stepNow++; drawSteps(); }
   function finish(text, ok) {
     busy = false; clearInterval(pt); clearInterval(timer); timer = null;
-    if (ok) stepNow = stepList.length;
-    drawSteps();
-    $('prog').className = 'prog ' + (ok ? 'ok' : 'err');
-    $('progTitle').textContent = ok ? '완료' : '진행하지 못했습니다';
-    $('note').style.display = 'block'; $('note').textContent = text;
+    if (ok) {
+      $('heroRun').style.display = 'none'; $('heroIdle').style.display = 'block';
+      google.script.run.openSheet('요약');
+    } else {
+      drawSteps(); $('hero').className = 'card err';
+      $('progTitle').textContent = '진행하지 못했습니다';
+      $('note').style.display = 'block'; $('note').textContent = text;
+    }
     load();
   }
   function fail(e) { finish(String(e.message || e).replace(/^Error:\s*/, ''), false); }
 
-  /* ── QA 실행 팝업에서 넘어온 작업 ── */
+  /* ── 실행 ── */
   function runJob(job) {
     busy = true; lock();
     var list = [];
@@ -141,99 +223,29 @@
     };
     gen(function () { apply(function () { start({}); }); });
   }
-
   function start(opts) {
     google.script.run.withSuccessHandler(function (r) {
       $('progTitle').textContent = r.round + ' 실행 중';
       timer = setInterval(function () { poll(r.runId); }, 6000);
     }).withFailureHandler(fail).startQaRun(opts);
   }
-
   function poll(runId) {
     google.script.run.withSuccessHandler(function (s) {
       if (s.status === '실행 중') return;
-      if (String(s.status).indexOf('완료') === 0) {
-        next();
-        var t = '통과 ' + s.pass + ' · 문제 ' + s.fail;
-        if (s.newDefects) t += ' · 새 이슈 ' + s.newDefects;
-        if (s.verified || s.reopened) t += '\n재확인: 종료 ' + s.verified + ' · 재오픈 ' + s.reopened;
-        finish(t, true);
-        google.script.run.openSheet('요약');
-      } else if (s.status === '시간 초과') {
-        finish('15분 안에 결과가 오지 않았습니다. 다시 실행해 주세요.', false);
-      } else {
-        finish(String(s.status).replace(/^오류:\s*/, ''), false);
-      }
+      if (String(s.status).indexOf('완료') === 0) { next(); finish('', true); }
+      else if (s.status === '시간 초과') finish('15분 안에 결과가 오지 않았습니다. 다시 실행해 주세요.', false);
+      else finish(String(s.status).replace(/^오류:\s*/, ''), false);
     }).getRunStatus(runId);
   }
-
-  function lock() {
-    $('fullBtn').disabled = busy || !hasTests;
-    $('aiBtn').disabled = busy;
-  }
-
-  /* ── 재확인 대기 · 확인 필요 ── */
-  var review = { fixed: [], check: [] };
-  function load() {
-    google.script.run.withSuccessHandler(function (s) {
-      review = s.review; nextRound = s.nextRound; hasTests = s.testcases;
-      $('fullBtn').textContent = hasTests ? '전체 QA 실행 · ' + nextRound + '차' : '전체 QA 실행';
-      draw(); lock();
-      if (s.running && !timer && !busy) {
-        busy = true; lock();
-        showSteps(['화면 눌러 보기', '결과 기록'], s.runningRound + ' 실행 중');
-        timer = setInterval(function () { poll(s.running); }, 6000);
-      }
-    }).getPanelState();
-  }
-
-  function card(d, kind) {
-    var manual = kind === 'check' || d.method === '직접';
-    var h = '<div class="item"><div class="item-top"><div><div class="id">' + esc(d.id) + (d.screen ? ' · ' + esc(d.screen) : '') + '</div><div class="name">' + esc(d.title) + '</div></div>';
-    if (kind === 'fixed') h += '<div class="seg"><span class="' + (manual ? '' : 'on') + '" data-id="' + esc(d.id) + '" data-m="AI">AI</span><span class="' + (manual ? 'on' : '') + '" data-id="' + esc(d.id) + '" data-m="직접">직접</span></div>';
-    h += '</div><div class="detail" style="display:' + (manual ? 'block' : 'none') + '">' +
-      '<div class="kv"><b>재현 절차</b><div>' + esc(d.steps) + '</div></div>' +
-      '<div class="kv"><b>기대 결과</b><div>' + esc(d.expected) + '</div></div>' +
-      '<div class="kv"><b>지난 실제 결과</b><div>' + esc(d.actual) + '</div></div>' +
-      '<div class="links"><a href="' + esc(d.page) + '" target="_blank">화면 열기 ↗</a>' + (d.shot ? '<a href="' + esc(d.shot) + '" target="_blank">실패 화면 ↗</a>' : '') + '<span data-row="' + esc(d.id) + '">시트에서 보기</span></div><div class="acts">';
-    if (kind === 'fixed') h += '<button class="b-green" data-v="통과" data-id="' + esc(d.id) + '">고쳐짐 · 종료</button><button class="b-red" data-v="재오픈" data-id="' + esc(d.id) + '">안 고쳐짐</button>';
-    else h += '<button class="b-red" data-v="이슈 맞음" data-id="' + esc(d.id) + '">실제 이슈</button><button class="b-gray" data-v="제외" data-id="' + esc(d.id) + '">테스트 오류</button>';
-    return h + '</div><div class="note" style="display:none"></div></div></div>';
-  }
-
-  function draw() {
-    $('nFixed').textContent = review.fixed.length; $('nCheck').textContent = review.check.length;
-    $('fixed').innerHTML = review.fixed.length ? review.fixed.map(function (d) { return card(d, 'fixed'); }).join('') : '<div class="empty">재확인할 이슈가 없습니다</div>';
-    $('check').innerHTML = review.check.length ? review.check.map(function (d) { return card(d, 'check'); }).join('') : '<div class="empty">판정할 건이 없습니다</div>';
-    var ai = review.fixed.filter(function (d) { return d.method !== '직접'; });
-    $('aiBtn').style.display = ai.length ? 'block' : 'none';
-    $('aiBtn').textContent = 'AI로 ' + ai.length + '건 재확인';
-    lock();
-  }
-
-  document.addEventListener('click', function (e) {
-    var t = e.target;
-    if (t.dataset.m) {
-      review.fixed.forEach(function (d) { if (d.id === t.dataset.id) d.method = t.dataset.m; });
-      draw(); google.script.run.setCheckMethod(t.dataset.id, t.dataset.m);
-    } else if (t.dataset.v) {
-      t.disabled = true;
-      google.script.run.withSuccessHandler(function (r) { review = r; draw(); })
-        .withFailureHandler(function (err) { t.disabled = false; var n = t.closest('.item').querySelector('.note'); n.style.display = 'block'; n.textContent = err.message; })
-        .manualVerdict(t.dataset.id, t.dataset.v);
-    } else if (t.dataset.row) {
-      google.script.run.openDefectRow(t.dataset.row);
-    }
-  });
-
   function recheck() {
-    var ai = review.fixed.filter(function (d) { return d.method !== '직접'; });
-    if (!ai.length) return;
     busy = true; lock();
-    showSteps(['수정완료 ' + ai.length + '건 다시 눌러 보기', '결과 기록'], '재확인 실행 중');
-    start({ only: ai.map(function (d) { return String(d.tc).trim(); }) });
+    google.script.run.withSuccessHandler(function (d) {
+      var ai = d.list.fixed.filter(function (x) { return x.method !== '직접'; });
+      if (!ai.length) { busy = false; load(); return; }
+      showSteps(['수정완료 ' + ai.length + '건 다시 눌러 보기', '결과 기록'], '재확인 실행 중');
+      start({ only: ai.map(function (x) { return String(x.tc).trim(); }) });
+    }).withFailureHandler(fail).getReviewDialogData();
   }
-
   function fullRun() {
     busy = true; lock();
     google.script.run.withSuccessHandler(function (n) {
