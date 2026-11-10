@@ -546,11 +546,18 @@ function readFigma_(url) {
   if (!token) throw new Error('설정에서 피그마 토큰을 먼저 입력하세요. (피그마 없이 하려면 피그마 링크 칸을 비우세요)');
   var m = url.match(/figma\.com\/(?:design|file|proto)\/([A-Za-z0-9]+)/);
   if (!m) throw new Error('피그마 링크 형식이 아닙니다. figma.com/design/... 주소를 넣어 주세요.');
+  // 피그마는 읽기 한도가 낮아서, 같은 파일은 저장해 둔 내용을 다시 쓴다 (6시간)
+  var cache = loadFigmaCache_(m[1]);
+  if (cache && Date.now() - cache.at < 6 * 3600000) return cache.text;
   var res = UrlFetchApp.fetch('https://api.figma.com/v1/files/' + m[1], { headers: { 'X-Figma-Token': token }, muteHttpExceptions: true });
   var code = res.getResponseCode();
+  if (code === 429) {
+    if (cache) return cache.text;   // 막혔으면 예전에 읽은 내용으로 진행
+    var wait = Number(res.getHeaders()['Retry-After'] || res.getHeaders()['retry-after'] || 0);
+    throw new Error('피그마 읽기 한도에 걸렸습니다' + (wait ? ' (약 ' + (wait >= 3600 ? Math.ceil(wait / 3600) + '시간' : Math.ceil(wait / 60) + '분') + ' 뒤 가능)' : '') + '. 피그마 링크 칸을 비우고 추가 전달 사항만으로 실행할 수도 있습니다.');
+  }
   if (code === 403) throw new Error('피그마 토큰이 만료됐거나 이 파일을 볼 권한이 없습니다. 설정에서 토큰을 새로 넣어 주세요.');
   if (code === 404) throw new Error('피그마 파일을 찾을 수 없습니다. 링크를 확인하세요.');
-  if (code === 429) throw new Error('피그마 요청이 많아 잠시 막혔습니다. 1분 뒤 다시 시도하세요.');
   if (code !== 200) throw new Error('피그마 파일을 읽지 못했습니다 (' + code + ')');
   var doc = JSON.parse(res.getContentText()).document;
   var lines = [];
@@ -562,7 +569,21 @@ function readFigma_(url) {
     });
   });
   if (!lines.length) throw new Error('피그마 파일에 화면(프레임)이 없습니다.');
-  return lines.slice(0, 600).join('\n');
+  var text = lines.slice(0, 600).join('\n');
+  saveFigmaCache_(m[1], text);
+  return text;
+}
+
+function loadFigmaCache_(key) {
+  var id = props_().getProperty('FIGMA_CACHE_' + key);
+  if (!id) return null;
+  try { return JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString('UTF-8')); } catch (e) { return null; }
+}
+
+function saveFigmaCache_(key, text) {
+  var p = props_(), id = p.getProperty('FIGMA_CACHE_' + key), body = JSON.stringify({ at: Date.now(), text: text });
+  if (id) { try { DriveApp.getFileById(id).setContent(body); return; } catch (e) {} }
+  p.setProperty('FIGMA_CACHE_' + key, shotFolder_().createFile('피그마 캐시_' + key + '.json', body, 'application/json').getId());
 }
 
 function walkFigma_(node, depth, lines) {
