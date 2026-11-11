@@ -46,7 +46,7 @@
     last = s.input; hasTests = s.testcases;
     if (last) { $('figmaUrl').value = last.figmaUrl || ''; $('targetUrl').value = last.targetUrl || ''; $('memo').value = last.memo || ''; }
     if (s.running) { $('go').disabled = true; $('msg').textContent = '이미 QA가 실행 중입니다. 메뉴 → 재확인 · 처리할 이슈에서 진행 상황을 확인하세요.'; }
-    else if (!(s.settings.gemini && s.settings.github && s.settings.webappUrl)) { $('go').disabled = true; $('msg').textContent = '먼저 메뉴 QA 자동화 → 설정에서 키를 입력하세요.'; }
+    else if (!(s.settings.ai && s.settings.github && s.settings.webappUrl)) { $('go').disabled = true; $('msg').textContent = '먼저 메뉴 QA 자동화 → 설정에서 키를 입력하세요.'; }
     explain();
   }).getRunDialogState();
   ['figmaUrl', 'targetUrl', 'memo'].forEach(function (id) { $(id).addEventListener('input', explain); });

@@ -199,6 +199,8 @@ function getSettingsStatus() {
   var p = props_().getProperties();
   return {
     gemini: !!p.GEMINI_API_KEY,
+    openai: !!p.OPENAI_API_KEY,
+    ai: !!(p.OPENAI_API_KEY || p.GEMINI_API_KEY),
     github: !!p.GITHUB_TOKEN,
     figma: !!p.FIGMA_TOKEN,
     repo: p.GITHUB_REPO || DEFAULT_REPO,
@@ -209,7 +211,7 @@ function getSettingsStatus() {
 
 function saveSettings(form) {
   var p = props_();
-  var map = { gemini: 'GEMINI_API_KEY', github: 'GITHUB_TOKEN', figma: 'FIGMA_TOKEN', repo: 'GITHUB_REPO', webappUrl: 'WEBAPP_URL', model: 'GEMINI_MODEL' };
+  var map = { gemini: 'GEMINI_API_KEY', openai: 'OPENAI_API_KEY', github: 'GITHUB_TOKEN', figma: 'FIGMA_TOKEN', repo: 'GITHUB_REPO', webappUrl: 'WEBAPP_URL', model: 'GEMINI_MODEL' };
   Object.keys(map).forEach(function (k) {
     var v = (form[k] || '').trim();
     if (v) p.setProperty(map[k], v);
@@ -230,7 +232,7 @@ function submitRun(form) {
   if (!targetUrl) throw new Error('테스트할 화면 주소를 입력하세요.');
   if (!/^https?:\/\//.test(targetUrl)) throw new Error('화면 주소는 http:// 또는 https://로 시작해야 합니다.');
   var s = getSettingsStatus();
-  if (!s.gemini || !s.github || !s.webappUrl) throw new Error('먼저 메뉴 QA 자동화 → 설정에서 키를 입력하세요.');
+  if (!s.ai || !s.github || !s.webappUrl) throw new Error('먼저 메뉴 QA 자동화 → 설정에서 키를 입력하세요.');
   if (findRunning_()) throw new Error('이미 QA가 실행 중입니다. 오른쪽 패널에서 진행 상황을 확인하세요.');
   var last = lastInput_();
   var hasTests = tcRows_().some(function (r) { return r.id; });
@@ -455,7 +457,7 @@ function generateTestDesign(form) {
   var memo = (form.memo || '').trim();
   if (!targetUrl) throw new Error('테스트할 화면 주소를 입력하세요.');
   if (!/^https?:\/\//.test(targetUrl)) throw new Error('화면 주소는 http:// 또는 https://로 시작해야 합니다.');
-  if (!props_().getProperty('GEMINI_API_KEY')) throw new Error('설정에서 Gemini API 키를 먼저 입력하세요.');
+  if (!props_().getProperty('OPENAI_API_KEY') && !props_().getProperty('GEMINI_API_KEY')) throw new Error('설정에서 AI 키(OpenAI 또는 Gemini)를 먼저 입력하세요.');
   if (findRunning_()) throw new Error('QA 실행 중에는 테스트를 다시 만들 수 없습니다. 실행이 끝난 뒤 다시 시도하세요.');
 
   progress_('피그마 읽는 중');
@@ -464,7 +466,7 @@ function generateTestDesign(form) {
   var pages = crawl_(targetUrl, memo);
   saveCtx_({ design: design, pages: pages, memo: memo, targetUrl: targetUrl, figmaUrl: figmaUrl });
 
-  var out = callGemini_(buildPrompt_('ia', design, pages, memo, targetUrl, ''));
+  var out = callAI_(buildPrompt_('ia', design, pages, memo, targetUrl, ''));
   if (!(out.ia || []).length || !(out.scenarios || []).length) throw new Error('AI가 화면 목록을 만들지 못했습니다. 피그마 링크와 화면 주소를 확인한 뒤 다시 시도하세요.');
   progress_('IA · 시나리오 기록 중');
   writeRows_(SHEETS.IA, (out.ia || []).map(function (r) {
@@ -490,7 +492,7 @@ function generateTestCases() {
     if (Date.now() - t0 > GEN_TIME_LIMIT_MS) { skipped.push(r[0]); return; }
     progress_('테스트 작성 중 (' + (idx + 1) + '/' + scRows.length + ')');
     try {
-      var o = callGemini_(buildPrompt_('tc', c.design, c.pages, c.memo, c.targetUrl,
+      var o = callAI_(buildPrompt_('tc', c.design, c.pages, c.memo, c.targetUrl,
         '=== IA ===\n' + iaText + '\n\n=== 전체 시나리오 ===\n' + scText + '\n\n=== 이번에 작성할 시나리오 ===\n' + r.join(' | ') +
         '\n이 시나리오 하나에 대한 테스트케이스만 2~4개 작성한다. scenarioId는 ' + r[0] + '.'));
       (o.testcases || []).forEach(function (t) { if (t.steps && t.steps.length) { t.scenarioId = r[0] + ' ' + r[1]; all.push(t); } });
@@ -572,7 +574,7 @@ function applyEditedTests() {
     if (!r.id) { maxNo++; r.data[0] = 'TC-' + ('0' + maxNo).slice(-2); tc.getRange(r.row, 1).setValue(r.data[0]); }
     progress_('테스트 반영 중: ' + r.data[0]);
     try {
-      var o = callGemini_(buildPrompt_('one', c.design, c.pages, c.memo, c.targetUrl,
+      var o = callAI_(buildPrompt_('one', c.design, c.pages, c.memo, c.targetUrl,
         '=== IA ===\n' + iaText + '\n\n=== 사람이 고친 테스트케이스 (이 내용을 그대로 실행 단계로 옮긴다) ===\n' +
         '테스트 항목: ' + r.data[2] + '\n사전 조건: ' + r.data[4] + '\n수행 단계:\n' + r.data[5] + '\n기대 결과:\n' + r.data[6]));
       if (!o.steps || !o.steps.length) throw new Error('빈 실행 단계');
@@ -786,6 +788,55 @@ function pickGeminiModel_(key) {
   flash.sort(function (a, b) { return ver(b) - ver(a); });
   props_().setProperty('GEMINI_MODEL', flash[0]);
   return flash[0];
+}
+
+// AI 호출: OpenAI 키가 있으면 OpenAI, 없으면 Gemini
+function callAI_(prompt) {
+  return props_().getProperty('OPENAI_API_KEY') ? callOpenAI_(prompt) : callGemini_(prompt);
+}
+
+function pickOpenAIModel_(key) {
+  var res = UrlFetchApp.fetch('https://api.openai.com/v1/models', { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
+  if (res.getResponseCode() === 401) throw new Error('OpenAI 키가 잘못됐거나 만료됐습니다. 설정에서 키를 새로 넣어 주세요.');
+  if (res.getResponseCode() !== 200) throw new Error('OpenAI 모델 목록 조회 실패 (' + res.getResponseCode() + ')');
+  var names = (JSON.parse(res.getContentText()).data || []).map(function (m) { return m.id; });
+  var prefer = ['gpt-5-mini', 'gpt-4.1-mini', 'gpt-4o-mini'];
+  for (var k = 0; k < prefer.length; k++) if (names.indexOf(prefer[k]) > -1) { props_().setProperty('OPENAI_MODEL', prefer[k]); return prefer[k]; }
+  var mini = names.filter(function (n) { return /^gpt-.*mini$/.test(n); }).sort().reverse();
+  if (!mini.length) throw new Error('사용 가능한 OpenAI 모델이 없습니다.');
+  props_().setProperty('OPENAI_MODEL', mini[0]);
+  return mini[0];
+}
+
+function callOpenAI_(prompt) {
+  var key = props_().getProperty('OPENAI_API_KEY');
+  var model = props_().getProperty('OPENAI_MODEL') || pickOpenAIModel_(key);
+  var lastErr = '';
+  for (var i = 0; i < 4; i++) {
+    var res = UrlFetchApp.fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + key },
+      payload: JSON.stringify({
+        model: model,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: '답은 JSON 객체 하나로만 한다 (json).' }, { role: 'user', content: prompt }]
+      })
+    });
+    var code = res.getResponseCode(), txt = res.getContentText();
+    if (code === 200) {
+      try {
+        var text = JSON.parse(txt).choices[0].message.content;
+        return JSON.parse(text.replace(/^```json\s*/, '').replace(/```\s*$/, ''));
+      } catch (e) { lastErr = 'AI 답변 형식 오류'; continue; }
+    }
+    lastErr = code + ' ' + txt.slice(0, 200);
+    if (code === 401) throw new Error('OpenAI 키가 잘못됐거나 만료됐습니다. 설정에서 키를 새로 넣어 주세요.');
+    if (code === 404 || (code === 400 && /model/i.test(txt))) { props_().deleteProperty('OPENAI_MODEL'); model = pickOpenAIModel_(key); continue; }
+    if (code === 429 && /quota|billing/i.test(txt)) throw new Error('OpenAI 사용 한도(결제)가 부족합니다. 키의 결제 상태를 확인하세요.');
+    if (code !== 429 && code < 500) break;
+    Utilities.sleep(4000 * (i + 1));
+  }
+  throw new Error('OpenAI 호출 실패: ' + lastErr);
 }
 
 function callGemini_(prompt) {

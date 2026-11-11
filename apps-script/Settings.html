@@ -13,6 +13,9 @@
 </head>
 <body>
   <div class="hint">비밀 값은 이 스프레드시트의 스크립트 속성에만 저장되고, 시트 화면에는 나오지 않습니다. 비워 두면 기존 값을 유지합니다.</div>
+  <label>OpenAI API 키 <span id="s-openai"></span></label>
+  <input id="openai" type="password" autocomplete="off">
+  <div class="hint">OpenAI 키가 있으면 OpenAI를 쓰고, 없으면 Gemini를 씁니다.</div>
   <label>Gemini API 키 <span id="s-gemini"></span></label>
   <input id="gemini" type="password" autocomplete="off">
   <label>GitHub 토큰 (Actions 실행용) <span id="s-github"></span></label>
@@ -29,7 +32,7 @@
   <div id="msg"></div>
 <script>
   function fill(s) {
-    ['gemini', 'github', 'figma'].forEach(function (k) {
+    ['openai', 'gemini', 'github', 'figma'].forEach(function (k) {
       document.getElementById('s-' + k).textContent = s[k] ? '(저장됨)' : '(미입력)';
       document.getElementById(k).value = '';
     });
@@ -39,7 +42,7 @@
   }
   function save() {
     var f = {};
-    ['gemini', 'github', 'figma', 'repo', 'webappUrl', 'model'].forEach(function (k) { f[k] = document.getElementById(k).value; });
+    ['openai', 'gemini', 'github', 'figma', 'repo', 'webappUrl', 'model'].forEach(function (k) { f[k] = document.getElementById(k).value; });
     google.script.run.withSuccessHandler(function (s) {
       fill(s);
       document.getElementById('msg').textContent = '저장했습니다. QA 실행 창을 다시 열면 상태가 갱신됩니다.';
