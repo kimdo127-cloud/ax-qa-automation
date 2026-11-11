@@ -283,17 +283,23 @@ function getPanelState() {
 function reviewCounts_() {
   var r = getReviewList_();
   var d = ss_().getSheetByName(SHEETS.DEFECT);
-  var rows = d.getLastRow() > 1 ? d.getRange(2, 15, d.getLastRow() - 1, 1).getValues() : [];
-  var cnt = function (st) { return rows.filter(function (x) { return x[0] === st; }).length; };
-  return {
-    fixed: r.fixed.length,
-    fixedAi: r.fixed.filter(function (x) { return x.method !== '직접'; }).length,
-    fixedManual: r.fixed.filter(function (x) { return x.method === '직접'; }).length,
-    check: r.check.length,
-    open: cnt('열림') + cnt('재오픈') + cnt('확인 필요'),
-    reopened: cnt('재오픈'),
-    closed: cnt('종료')
-  };
+  var rows = d.getLastRow() > 1 ? d.getRange(2, 1, d.getLastRow() - 1, 15).getValues().filter(function (x) { return x[0]; }) : [];
+  var c = { total: 0, waitDev: 0, recheck: 0, judge: 0, reopen: 0, done: 0 };
+  rows.forEach(function (x) {
+    var st = x[14], fixed = x[12] === '수정완료';
+    if (st === '제외') return;              // 테스트 오류로 제외한 건은 QA 이슈에서 뺀다
+    c.total++;
+    if (st === '종료') c.done++;
+    else if (st === '확인 필요') c.judge++;
+    else if (fixed) c.recheck++;
+    else if (st === '재오픈') c.reopen++;
+    else c.waitDev++;
+  });
+  c.fixed = r.fixed.length;
+  c.fixedAi = r.fixed.filter(function (x) { return x.method !== '직접'; }).length;
+  c.fixedManual = r.fixed.filter(function (x) { return x.method === '직접'; }).length;
+  c.check = r.check.length;
+  return c;
 }
 
 function lastRunInfo_(runRows) {

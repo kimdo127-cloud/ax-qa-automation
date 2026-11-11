@@ -22,6 +22,8 @@
   .legend-row { display: flex; gap: 12px; font-size: 12px; color: var(--g700); }
   .legend-row b { font-weight: 700; }
   .dotc { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; }
+  .sgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 4px; font-size: 12px; color: var(--g700); }
+  .sgrid b { float: right; color: var(--g900); }
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
   .stat { background: var(--g50); border-radius: 10px; padding: 8px 10px; }
   .stat b { display: block; font-size: 17px; margin-top: 2px; }
@@ -65,15 +67,10 @@
     <!-- 최근 실행 결과 / 진행 상황 -->
     <div class="card" id="hero">
       <div id="heroIdle">
-        <div class="hero-top"><span class="label">최근 QA</span><span class="hero-time" id="lastAt"></span></div>
-        <div class="hero-title" id="lastTitle">아직 실행 기록이 없습니다</div>
-        <div class="ratio"><i id="rPass" style="background:var(--green)"></i><i id="rFail" style="background:#F04452"></i></div>
-        <div class="legend-row"><span><span class="dotc" style="background:var(--green)"></span>통과 <b id="lPass">0</b></span><span><span class="dotc" style="background:#F04452"></span>문제 <b id="lFail">0</b></span></div>
-        <div class="stats">
-          <div class="stat"><span class="label">미해결</span><b id="sOpen">0</b></div>
-          <div class="stat"><span class="label">재오픈</span><b id="sReopen">0</b></div>
-          <div class="stat"><span class="label">종료</span><b id="sClosed">0</b></div>
-        </div>
+        <div class="hero-top"><span class="label">QA 이슈</span><span class="hero-time" id="lastAt"></span></div>
+        <div class="hero-title" id="lastTitle">아직 QA 이슈가 없습니다</div>
+        <div class="ratio" id="bar"></div>
+        <div class="sgrid" id="sgrid"></div>
       </div>
       <div id="heroRun" style="display:none">
         <div class="hero-top"><span class="hero-title" id="progTitle">QA 실행 중</span><span class="hero-time" id="elapsed"></span></div>
@@ -137,14 +134,11 @@
     $('nCheck').innerHTML = c.check + '<small>건</small>'; $('nCheck').className = 'big' + (c.check ? '' : ' zero');
     $('split').textContent = c.fixed ? 'AI 확인 ' + c.fixedAi + '건 · 직접 확인 ' + c.fixedManual + '건' : '';
     $('aiBtn').textContent = c.fixedAi ? 'AI로 ' + c.fixedAi + '건 재확인' : 'AI로 재확인';
-    $('sOpen').textContent = c.open; $('sReopen').textContent = c.reopened; $('sClosed').textContent = c.closed;
-    if (s.last) {
-      $('lastTitle').textContent = s.last.label + ' 완료 · 테스트 ' + s.last.total + '건';
-      $('lastAt').textContent = s.last.at;
-      var tot = (s.last.pass || 0) + (s.last.fail || 0) || 1;
-      $('rPass').style.width = (s.last.pass / tot * 100) + '%'; $('rFail').style.width = (s.last.fail / tot * 100) + '%';
-      $('lPass').textContent = s.last.pass; $('lFail').textContent = s.last.fail;
-    }
+    var segs = [['수정 대기', c.waitDev, '#B0B8C1'], ['재확인 대기', c.recheck, '#3182F6'], ['판정 필요', c.judge, '#F5B800'], ['재오픈', c.reopen, '#FF8A3D'], ['완료', c.done, '#22A55B']];
+    $('lastTitle').textContent = c.total ? '전체 ' + c.total + '건' : '아직 QA 이슈가 없습니다';
+    $('lastAt').textContent = s.last ? s.last.label + ' · ' + s.last.at : '';
+    $('bar').innerHTML = c.total ? segs.map(function (g) { return g[1] ? '<i style="width:' + (g[1] / c.total * 100) + '%;background:' + g[2] + '"></i>' : ''; }).join('') : '';
+    $('sgrid').innerHTML = segs.map(function (g) { return '<span><span class="dotc" style="background:' + g[2] + '"></span>' + g[0] + '<b>' + g[1] + '</b></span>'; }).join('');
     $('fullBtn').textContent = hasTests ? '전체 QA 실행 · ' + nextRound + '차' : '전체 QA 실행';
     lock();
   }
@@ -164,8 +158,8 @@
       }
     }).getPanelState();
   }
-  // 팝업에서 판정하거나 시트에서 개발자가 표시하면 숫자가 바뀌므로 주기적으로 새로 읽는다
-  refreshT = setInterval(function () { if (!busy) load(); }, 10000);
+  // 개발자가 시트에서 상태를 바꾸면 5초 안에 막대에 반영되도록 주기적으로 새로 읽는다
+  refreshT = setInterval(function () { if (!busy) load(); }, 5000);
 
   /* ── 진행 상황 ── */
   function showSteps(list, title) {
